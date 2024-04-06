@@ -190,7 +190,7 @@ class BasePanel(ScreenPanel):
         connected = self._printer and self._printer.state not in {'disconnected', 'startup', 'shutdown', 'error'}
         self.control['estop'].set_visible(printing)
         self.control['shutdown'].set_visible(not printing)
-        self.show_shortcut(connected)
+        #self.show_shortcut(connected)
         self.show_heaters(connected)
         for control in ('back', 'home'):
             self.set_control_sensitive(len(self._screen._cur_panels) > 1, control=control)

@@ -26,12 +26,12 @@ class Panel(ScreenPanel):
         self.settings = {}
         self.menu = ['move_menu']
         self.buttons = {
-            'x+': self._gtk.Button("arrow-right", "X+", "color1"),
-            'x-': self._gtk.Button("arrow-left", "X-", "color1"),
-            'y+': self._gtk.Button("arrow-up", "Y+", "color2"),
-            'y-': self._gtk.Button("arrow-down", "Y-", "color2"),
-            'z+': self._gtk.Button("z-farther", "Z+", "color3"),
-            'z-': self._gtk.Button("z-closer", "Z-", "color3"),
+            'x+': self._gtk.Button("arrow-down", "X+", "color1"),
+            'x-': self._gtk.Button("arrow-up", "X-", "color1"),
+            'y+': self._gtk.Button("arrow-right", "Y+", "color2"),
+            'y-': self._gtk.Button("arrow-left", "Y-", "color2"),
+            'z+': self._gtk.Button("z-farther", "Bed Up", "color3"),    #Z+
+            'z-': self._gtk.Button("z-closer", "Bed Down", "color3"),     #Z-
             'home': self._gtk.Button("home", _("Home"), "color4"),
             'motors_off': self._gtk.Button("motor-off", _("Disable Motors"), "color4"),
         }
@@ -52,28 +52,28 @@ class Panel(ScreenPanel):
         grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
         if self._screen.vertical_mode:
             if self._screen.lang_ltr:
-                grid.attach(self.buttons['x+'], 2, 1, 1, 1)
-                grid.attach(self.buttons['x-'], 0, 1, 1, 1)
+                grid.attach(self.buttons['y+'], 2, 1, 1, 1)
+                grid.attach(self.buttons['y-'], 0, 1, 1, 1)
                 grid.attach(self.buttons['z+'], 2, 2, 1, 1)
                 grid.attach(self.buttons['z-'], 0, 2, 1, 1)
             else:
-                grid.attach(self.buttons['x+'], 0, 1, 1, 1)
-                grid.attach(self.buttons['x-'], 2, 1, 1, 1)
+                grid.attach(self.buttons['y+'], 0, 1, 1, 1)
+                grid.attach(self.buttons['y-'], 2, 1, 1, 1)
                 grid.attach(self.buttons['z+'], 0, 2, 1, 1)
                 grid.attach(self.buttons['z-'], 2, 2, 1, 1)
-            grid.attach(adjust, 1, 2, 1, 1)
-            grid.attach(self.buttons['y+'], 1, 0, 1, 1)
-            grid.attach(self.buttons['y-'], 1, 1, 1, 1)
+        #   grid.attach(adjust, 1, 2, 1, 1)
+            grid.attach(self.buttons['x-'], 1, 0, 1, 1)
+            grid.attach(self.buttons['x+'], 1, 1, 1, 1)
 
         else:
             if self._screen.lang_ltr:
-                grid.attach(self.buttons['x+'], 2, 1, 1, 1)
-                grid.attach(self.buttons['x-'], 0, 1, 1, 1)
+                grid.attach(self.buttons['y+'], 2, 1, 1, 1)
+                grid.attach(self.buttons['y-'], 0, 1, 1, 1)
             else:
-                grid.attach(self.buttons['x+'], 0, 1, 1, 1)
-                grid.attach(self.buttons['x-'], 2, 1, 1, 1)
-            grid.attach(self.buttons['y+'], 1, 0, 1, 1)
-            grid.attach(self.buttons['y-'], 1, 1, 1, 1)
+                grid.attach(self.buttons['y+'], 0, 1, 1, 1)
+                grid.attach(self.buttons['y-'], 2, 1, 1, 1)
+            grid.attach(self.buttons['x-'], 1, 0, 1, 1)
+            grid.attach(self.buttons['x+'], 1, 1, 1, 1)
             grid.attach(self.buttons['z+'], 3, 0, 1, 1)
             grid.attach(self.buttons['z-'], 3, 1, 1, 1)
 
@@ -101,8 +101,8 @@ class Panel(ScreenPanel):
         bottomgrid.attach(self.labels['pos_y'], 1, 0, 1, 1)
         bottomgrid.attach(self.labels['pos_z'], 2, 0, 1, 1)
         bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
-        if not self._screen.vertical_mode:
-            bottomgrid.attach(adjust, 3, 0, 1, 2)
+        #if not self._screen.vertical_mode:
+        #    bottomgrid.attach(adjust, 3, 0, 1, 2)
 
         self.labels['move_menu'] = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
         self.labels['move_menu'].attach(grid, 0, 0, 1, 3)

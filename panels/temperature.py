@@ -54,18 +54,19 @@ class Panel(ScreenPanel):
         self.content.add(self.grid)
 
     def create_right_panel(self):
-        cooldown = self._gtk.Button('cool-down', _('Cooldown'), "color4", self.bts, Gtk.PositionType.LEFT, 1)
-        adjust = self._gtk.Button('fine-tune', None, "color3", self.bts * 1.4, Gtk.PositionType.LEFT, 1)
-        cooldown.connect("clicked", self.set_temperature, "cooldown")
-        adjust.connect("clicked", self.switch_preheat_adjust)
+        #cooldown = self._gtk.Button('cool-down', _('Cooldown'), "color4", self.bts, Gtk.PositionType.LEFT, 1)
+        #adjust = self._gtk.Button('fine-tune', None, "color3", self.bts * 1.4, Gtk.PositionType.LEFT, 1)
+        #cooldown.connect("clicked", self.set_temperature, "cooldown")
+        #adjust.connect("clicked", self.switch_preheat_adjust)
 
         right = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
-        right.attach(cooldown, 0, 0, 2, 1)
-        right.attach(adjust, 2, 0, 1, 1)
+        #right.attach(cooldown, 2, 2, 1, 1)
+        
+        #right.attach(adjust, 2, 0, 1, 1)
         if self.show_preheat:
-            right.attach(self.preheat(), 0, 1, 3, 3)
+            right.attach(self.preheat(), 0, 0, 3, 3)
         else:
-            right.attach(self.delta_adjust(), 0, 1, 3, 3)
+            right.attach(self.delta_adjust(), 0, 3, 3)
         return right
 
     def switch_preheat_adjust(self, widget):
@@ -80,6 +81,10 @@ class Panel(ScreenPanel):
 
     def preheat(self):
         self.labels["preheat_grid"] = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
+        cooldown = self._gtk.Button('cool-down', _('Cooldown'), "color4", self.bts, Gtk.PositionType.LEFT, 1)
+        cooldown.connect("clicked", self.set_temperature, "cooldown")
+        self.labels['preheat_grid'].attach(cooldown, 1, 1, 1, 1)
+
         i = 0
         for option in self.preheat_options:
             if option != "cooldown":
@@ -87,6 +92,7 @@ class Panel(ScreenPanel):
                 self.labels[option].connect("clicked", self.set_temperature, option)
                 self.labels['preheat_grid'].attach(self.labels[option], (i % 2), int(i / 2), 1, 1)
                 i += 1
+        
         scroll = self._gtk.ScrolledWindow()
         scroll.add(self.labels["preheat_grid"])
         return scroll
@@ -324,12 +330,12 @@ class Panel(ScreenPanel):
 
         can_target = self._printer.device_has_target(device)
         self.labels['da'].add_object(device, "temperatures", rgb, False, False)
-        if can_target:
-            self.labels['da'].add_object(device, "targets", rgb, False, True)
-            name.connect('button-press-event', self.name_pressed, device)
-            name.connect('button-release-event', self.name_released, device)
-        else:
-            name.connect("clicked", self.toggle_visibility, device)
+        #if can_target:
+        #    self.labels['da'].add_object(device, "targets", rgb, False, True)
+        #    name.connect('button-press-event', self.name_pressed, device)
+        #    name.connect('button-release-event', self.name_released, device)
+        #else:
+        #    name.connect("clicked", self.toggle_visibility, device)
         if self._show_heater_power and self._printer.device_has_power(device):
             self.labels['da'].add_object(device, "powers", rgb, True, False)
         self.labels['da'].set_showing(device, visible)
