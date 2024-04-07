@@ -369,8 +369,8 @@ class Panel(ScreenPanel):
         if self.popover_timeout is not None:
             GLib.source_remove(self.popover_timeout)
             self.popover_timeout = None
-        #if not self.popover_device:
-        #    self.select_heater(None, device)
+        if not self.popover_device:
+            self.select_heater(None, device)
 
     def toggle_visibility(self, widget, device=None):
         if device is None:
@@ -459,8 +459,8 @@ class Panel(ScreenPanel):
         self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
         self.active_heater = None
 
-        for d in self.active_heaters:
-            self.devices[d]['name'].get_style_context().add_class("button_active")
+        #for d in self.active_heaters:
+        #    self.devices[d]['name'].get_style_context().add_class("button_active")
 
         if self._screen.vertical_mode:
             self.grid.remove_row(1)
@@ -505,8 +505,7 @@ class Panel(ScreenPanel):
                     self._printer.get_dev_stat(x, "power"),
                 )
 
-    def show_numpad(self, widget, device):
-
+    def show_numpad(self, widget, device=None):
         if self.active_heater is not None:
             self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
         self.active_heater = device
@@ -520,14 +519,14 @@ class Panel(ScreenPanel):
         self.labels["keypad"].clear()
 
         if self._screen.vertical_mode:
-            self.main_menu.remove_row(1)
-            self.main_menu.attach(self.labels["keypad"], 0, 1, 1, 1)
+            self.grid.remove_row(1)
+            self.grid.attach(self.labels["keypad"], 0, 1, 1, 1)
         else:
-            self.main_menu.remove_column(1)
-            self.main_menu.attach(self.labels["keypad"], 1, 0, 1, 1)
-        self.main_menu.show_all()
-        self.numpad_visible = True
-        self._screen.base_panel.set_control_sensitive(True, control='back')
+            self.grid.remove_column(1)
+            self.grid.attach(self.labels["keypad"], 1, 0, 1, 1)
+        self.grid.show_all()
+
+        #self.labels['popover'].popdown()
 
     def update_graph(self):
         self.labels['da'].queue_draw()
