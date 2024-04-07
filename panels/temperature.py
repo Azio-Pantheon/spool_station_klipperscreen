@@ -321,10 +321,12 @@ class Panel(ScreenPanel):
 
         rgb = self._gtk.get_temp_color(dev_type)
 
+
         can_target = self._printer.device_has_target(device)
         self.labels['da'].add_object(device, "temperatures", rgb, False, False)
-        if can_target:
-            self.labels['da'].add_object(device, "targets", rgb, False, True)
+        #removing target temp showing in the graph
+        #if can_target:
+        #    self.labels['da'].add_object(device, "targets", rgb, False, True)
         if self._show_heater_power and self._printer.device_has_power(device):
             self.labels['da'].add_object(device, "powers", rgb, True, False)
 
