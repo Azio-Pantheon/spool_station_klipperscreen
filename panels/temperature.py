@@ -53,12 +53,12 @@ class Panel(ScreenPanel):
 
         self.content.add(self.grid)
 
+
     def create_right_panel(self):
         #cooldown = self._gtk.Button('cool-down', _('Cooldown'), "color4", self.bts, Gtk.PositionType.LEFT, 1)
         #adjust = self._gtk.Button('fine-tune', None, "color3", self.bts * 1.4, Gtk.PositionType.LEFT, 1)
         #cooldown.connect("clicked", self.set_temperature, "cooldown")
         #adjust.connect("clicked", self.switch_preheat_adjust)
-
         right = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
         #right.attach(cooldown, 2, 2, 1, 1)
         
@@ -321,23 +321,22 @@ class Panel(ScreenPanel):
 
         rgb = self._gtk.get_temp_color(dev_type)
 
-        name = self._gtk.Button(image, self.prettify(devname), None, self.bts, Gtk.PositionType.LEFT, 1)
-        name.set_alignment(0, .5)
-        name.get_style_context().add_class(class_name)
-        visible = self._config.get_config().getboolean(f"graph {self._screen.connected_printer}", device, fallback=True)
-        if visible:
-            name.get_style_context().add_class("graph_label")
-
         can_target = self._printer.device_has_target(device)
         self.labels['da'].add_object(device, "temperatures", rgb, False, False)
         if can_target:
             self.labels['da'].add_object(device, "targets", rgb, False, True)
-        #    name.connect('button-press-event', self.name_pressed, device)
-        #    name.connect('button-release-event', self.name_released, device)
-        # else:
-        #    name.connect("clicked", self.toggle_visibility, device)
         if self._show_heater_power and self._printer.device_has_power(device):
             self.labels['da'].add_object(device, "powers", rgb, True, False)
+
+        name = self._gtk.Button(image, self.prettify(devname), None, self.bts, Gtk.PositionType.LEFT, 1)
+        #disable clickability
+        #name.connect("clicked", self.toggle_visibility, device)
+        name.set_alignment(0, .5)
+        name.get_style_context().add_class(class_name)
+
+        visible = self._config.get_config().getboolean(f"graph {self._screen.connected_printer}", device, fallback=True)
+        if visible:
+            name.get_style_context().add_class("graph_label")
         self.labels['da'].set_showing(device, visible)
 
         temp = self._gtk.Button(label="", lines=1)
@@ -351,10 +350,6 @@ class Panel(ScreenPanel):
             "can_target": can_target,
             "visible": visible
         }
-
-        if self.devices[device]["can_target"]:
-            self.devices[device]['select'] = self._gtk.Button(label=_("select"))
-        #    self.devices[device]['select'].connect('clicked', self.select_heater, device)
 
         devices = sorted(self.devices)
         pos = devices.index(device) + 1
@@ -437,7 +432,7 @@ class Panel(ScreenPanel):
         self.labels['devices'].get_style_context().add_class('heater-grid')
 
         name = Gtk.Label()
-        temp = Gtk.Label(_("Temp (°C)"))
+        temp = Gtk.Label(label=_("Temp (°C)"))
         temp.get_style_context().add_class("heater-grid-temp")
 
         self.labels['devices'].attach(name, 0, 0, 1, 1)
@@ -452,21 +447,6 @@ class Panel(ScreenPanel):
 
         self.left_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         self.left_panel.add(scroll)
-
-        self.labels['graph_settemp'] = self._gtk.Button(label=_("Set Temp"))
-        self.labels['graph_settemp'].connect("clicked", self.show_numpad)
-        #disabling hide/show functionality
-        self.labels['graph_hide'] = self._gtk.Button(label=_("Hide"))
-        #self.labels['graph_hide'].connect("clicked", self.toggle_visibility)
-        self.labels['graph_show'] = self._gtk.Button(label=_("Show"))
-        #self.labels['graph_show'].connect("clicked", self.toggle_visibility)
-
-        #popover = Gtk.Popover()
-        #self.labels['popover_vbox'] = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        #popover.add(self.labels['popover_vbox'])
-        #popover.set_position(Gtk.PositionType.BOTTOM)
-        #popover.connect('closed', self.popover_closed)
-        #self.labels['popover'] = popover
 
         for d in self._printer.get_temp_devices():
             self.add_device(d)
