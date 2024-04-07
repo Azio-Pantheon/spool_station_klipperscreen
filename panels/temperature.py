@@ -43,8 +43,8 @@ class Panel(ScreenPanel):
             # Support for hiding devices by name
             if name.startswith("_"):
                 continue
-            if h not in self.active_heaters:
-                self.select_heater(None, h)
+            #if h not in self.active_heaters:
+            #    self.select_heater(None, h)
 
         if self._screen.vertical_mode:
             self.grid.attach(self.create_right_panel(), 0, 1, 1, 1)
@@ -332,10 +332,10 @@ class Panel(ScreenPanel):
         self.labels['da'].add_object(device, "temperatures", rgb, False, False)
         if can_target:
             self.labels['da'].add_object(device, "targets", rgb, False, True)
-            name.connect('button-press-event', self.name_pressed, device)
-            name.connect('button-release-event', self.name_released, device)
-        else:
-            name.connect("clicked", self.toggle_visibility, device)
+        #    name.connect('button-press-event', self.name_pressed, device)
+        #    name.connect('button-release-event', self.name_released, device)
+        # else:
+        #    name.connect("clicked", self.toggle_visibility, device)
         if self._show_heater_power and self._printer.device_has_power(device):
             self.labels['da'].add_object(device, "powers", rgb, True, False)
         self.labels['da'].set_showing(device, visible)
@@ -353,8 +353,8 @@ class Panel(ScreenPanel):
         }
 
         if self.devices[device]["can_target"]:
-            self.devices[device]['select'] = self._gtk.Button(label=_("Select"))
-            self.devices[device]['select'].connect('clicked', self.select_heater, device)
+            self.devices[device]['select'] = self._gtk.Button(label=_("select"))
+        #    self.devices[device]['select'].connect('clicked', self.select_heater, device)
 
         devices = sorted(self.devices)
         pos = devices.index(device) + 1
@@ -372,8 +372,8 @@ class Panel(ScreenPanel):
         if self.popover_timeout is not None:
             GLib.source_remove(self.popover_timeout)
             self.popover_timeout = None
-        if not self.popover_device:
-            self.select_heater(None, device)
+        #if not self.popover_device:
+        #    self.select_heater(None, device)
 
     def toggle_visibility(self, widget, device=None):
         if device is None:
@@ -455,17 +455,18 @@ class Panel(ScreenPanel):
 
         self.labels['graph_settemp'] = self._gtk.Button(label=_("Set Temp"))
         self.labels['graph_settemp'].connect("clicked", self.show_numpad)
+        #disabling hide/show functionality
         self.labels['graph_hide'] = self._gtk.Button(label=_("Hide"))
-        self.labels['graph_hide'].connect("clicked", self.toggle_visibility)
+        #self.labels['graph_hide'].connect("clicked", self.toggle_visibility)
         self.labels['graph_show'] = self._gtk.Button(label=_("Show"))
-        self.labels['graph_show'].connect("clicked", self.toggle_visibility)
+        #self.labels['graph_show'].connect("clicked", self.toggle_visibility)
 
-        popover = Gtk.Popover()
-        self.labels['popover_vbox'] = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        popover.add(self.labels['popover_vbox'])
-        popover.set_position(Gtk.PositionType.BOTTOM)
-        popover.connect('closed', self.popover_closed)
-        self.labels['popover'] = popover
+        #popover = Gtk.Popover()
+        #self.labels['popover_vbox'] = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        #popover.add(self.labels['popover_vbox'])
+        #popover.set_position(Gtk.PositionType.BOTTOM)
+        #popover.connect('closed', self.popover_closed)
+        #self.labels['popover'] = popover
 
         for d in self._printer.get_temp_devices():
             self.add_device(d)
