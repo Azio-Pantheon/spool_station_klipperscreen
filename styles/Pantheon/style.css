@@ -3,11 +3,10 @@
 @define-color pantheon-base0 #839496;
 @define-color pantheon-base1 #93a1a1;
 @define-color pantheon-base2 #eee8d5;
-@define-color pantheon-base3 #fdf6e3;
+@define-color pantheon-off-white #fdf6e3;
 @define-color pantheon-base00 #657b83;
 @define-color pantheon-base01  #586e75;
 @define-color pantheon-base02 #073642;
-@define-color pantheon-base03 #414042;
 @define-color pantheon-yellow #b58900;
 @define-color pantheon-orange #cb4b16;
 @define-color pantheon-red #dc322f;
@@ -18,24 +17,24 @@
 @define-color pantheon-green #859900;
 
 @define-color pantheon-grey #414042;
-@define-color pantheon-more-grey #272627;
-@define-color pantheon-even-more-grey #1a191a;
+@define-color Pantheon-button-grey #272627;
+@define-color Pantheon-background-grey #1a191a;
 
 @define-color pantheon-mint-corrected #66BE8E;
 @define-color pantheon-beige-corrected #c0a88c;
 
 * {
-    color: @pantheon-even-more-grey;
+    color: @pantheon-off-white;
 }
 
 list row,
 treeview.view,
 window {
-    background-color: @pantheon-even-more-grey;
+    background-color: @Pantheon-background-grey;
 }
 
 button {
-    background-color: @pantheon-even-more-grey;
+    background-color: @Pantheon-background-grey;
 }
 
 button:active {
@@ -43,34 +42,34 @@ button:active {
 }
 
 .button_active {
-    border-color: @pantheon-more-grey;
+    border-color: @Pantheon-button-grey;
     border-style: solid;
-    border-radius: 1em;
-    background-color: @pantheon-more-grey;
+    border-radius: 0.25em;
+    background-color: @Pantheon-button-grey;
 }
 
 button.color1 {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
     border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 1em;
+    border-radius: 0.25em;
 }
 
 button.color2 {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
     border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 1em;
+    border-radius: 0.25em;
 }
 
 button.color3 {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
     border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 1em;
+    border-radius: 0.25em;
 }
 
 button.color4 {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
     border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 1em;
+    border-radius: 0.25em;
 }
 
 button.color1:active,
@@ -81,6 +80,7 @@ button.update:active,
 button.invalid:active,
 .dialog button:active {
     border-style: none;
+    background-color: @pantheon-mint-corrected;
     margin-top: .5em;
 }
 
@@ -89,7 +89,7 @@ button.active {
 }
 
 button.update {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
     border: 0;
     border-bottom: .3em solid;
     border-bottom-color: @pantheon-green;
@@ -97,7 +97,7 @@ button.update {
 }
 
 button.invalid {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
     border: 0;
     border-bottom: .3em solid;
     border-bottom-color: @pantheon-red;
@@ -111,13 +111,13 @@ combobox arrow,
 combobox menuitem,
 popover,
 popover button {
-    background-color: @pantheon-more-grey;
-    border-color: @pantheon-base03;
+    background-color: @Pantheon-button-grey;
+    border-color: @pantheon-grey;
 }
 
 treeview.view check,
 switch {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
 }
 
 treeview.view check:checked,
@@ -126,42 +126,42 @@ switch:checked {
 }
 
 entry {
-    background-color: @pantheon-more-grey;
-    border-color: @pantheon-base03;
+    background-color: @Pantheon-button-grey;
+    border-color: @pantheon-grey;
 }
 
 label {
-    color: @pantheon-base3;
+    color: @pantheon-off-white;
 }
 
 trough {
-    background-color: @pantheon-more-grey;
-    color: @pantheon-base3;
-    border-color: @pantheon-base03;
+    background-color: @Pantheon-button-grey;
+    color: @pantheon-off-white;
+    border-color: @pantheon-grey;
     border-radius: 1em;
 }
 
 trough highlight,
 trough progress {
     background-color:  @pantheon-violet;
-    color: @pantheon-base3;
-    border-color: @pantheon-base03;
+    color: @pantheon-off-white;
+    border-color: @pantheon-grey;
     border-top-left-radius: 1em;
     border-bottom-left-radius: 1em;
 }
 
 scale-mark {
-    color: @pantheon-base3;
+    color: @pantheon-off-white;
 }
 
 scrollbar,
 scrollbar button,
 scrollbar trough {
-    background-color: @pantheon-base03;
+    background-color: @pantheon-grey;
 }
 
 scrollbar slider {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
 }
 
 textview .time {
@@ -169,30 +169,30 @@ textview .time {
 }
 
 .dialog {
-    border: @pantheon-base03;
-    background-color: @pantheon-base03;
+    border: @pantheon-grey;
+    background-color: @pantheon-grey;
 }
 
 .dialog button {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
     border-radius: .75em;
 }
 
 .horizontal_togglebuttons  {
-    border-color: @pantheon-base03;
-    background-color: @pantheon-more-grey;
+    border-color: @pantheon-grey;
+    background-color: @Pantheon-button-grey;
 }
 
 .horizontal_togglebuttons_active {
-    background-color: @pantheon-orange;
+    background-color: @pantheon-beige-corrected;
 }
 
 .fan_slider {
-    color: @pantheon-base3;
+    color: @pantheon-off-white;
 }
 
 .message_popup {
-    border-bottom-color: @pantheon-base3;
+    border-bottom-color: @pantheon-off-white;
 }
 
 .message_popup button {
@@ -206,7 +206,7 @@ textview .time {
 
 .message_popup_warning,
 .message_popup_warning button {
-    background-color:  @pantheon-orange;
+    background-color:  @pantheon-beige-corrected;
 }
 
 .message_popup_error,
@@ -215,16 +215,16 @@ textview .time {
 }
 
 .numpad_key {
-    border-color: @pantheon-base03;
-    background-color: @pantheon-more-grey;
+    border-color: @pantheon-grey;
+    background-color: @Pantheon-button-grey;
 }
 
 .printing-status {
-    color: @pantheon-base3;
+    color: @pantheon-off-white;
 }
 
 .printing-progress-text {
-    color: @pantheon-base3;
+    color: @pantheon-off-white;
 }
 
 .printing-status-label {
@@ -233,13 +233,13 @@ textview .time {
 
 .message {
     border-color: @pantheon-red;
-    color: @pantheon-base3;
+    color: @pantheon-off-white;
     background-color: @pantheon-red;
 }
 
 .message button {
-    background-color: @pantheon-base3;
-    color: @pantheon-base03;
+    background-color: @pantheon-off-white;
+    color: @pantheon-grey;
 }
 
 .warning {
@@ -251,7 +251,7 @@ textview .time {
 }
 
 .keyboard_pad {
-    background-color: @pantheon-more-grey;
+    background-color: @Pantheon-button-grey;
 }
 
 .dialog-error {
@@ -275,5 +275,5 @@ textview .time {
 }
 
 .dialog-primary {
-     border-bottom-color: @pantheon-orange;
+     border-bottom-color: @pantheon-beige-corrected;
 }
