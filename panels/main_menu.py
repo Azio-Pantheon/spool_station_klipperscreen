@@ -2,7 +2,7 @@ import logging
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gdk
 from panels.menu import Panel as MenuPanel
 from ks_includes.widgets.heatergraph import HeaterGraph
 from ks_includes.widgets.keypad import Keypad
@@ -125,21 +125,27 @@ class Panel(MenuPanel):
 
         can_target = self._printer.device_has_target(device)
         self.labels['da'].add_object(device, "temperatures", rgb, False, False)
-        if can_target:
-            self.labels['da'].add_object(device, "targets", rgb, False, True)
+        #removing target temp showing in the graph
+        #if can_target:
+        #    self.labels['da'].add_object(device, "targets", rgb, False, True)
         if self._show_heater_power and self._printer.device_has_power(device):
             self.labels['da'].add_object(device, "powers", rgb, True, False)
 
         name = self._gtk.Button(image, self.prettify(devname), None, self.bts, Gtk.PositionType.LEFT, 1)
-        name.connect("clicked", self.toggle_visibility, device)
+        #disable clickability
+        #name.connect("clicked", self.toggle_visibility, device)
         name.set_alignment(0, .5)
         name.get_style_context().add_class(class_name)
+
         visible = self._config.get_config().getboolean(f"graph {self._screen.connected_printer}", device, fallback=True)
         if visible:
             name.get_style_context().add_class("graph_label")
         self.labels['da'].set_showing(device, visible)
 
         temp = self._gtk.Button(label="", lines=1)
+        #rgba = Gdk.RGBA()
+        #rgba.parse('light blue')  # Set the desired background color
+        #temp.override_background_color(Gtk.StateFlags.NORMAL, rgba)
         if can_target:
             temp.connect("clicked", self.show_numpad, device)
 
