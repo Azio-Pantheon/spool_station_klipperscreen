@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
-
+import os
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -221,7 +221,7 @@ class BasePanel(ScreenPanel):
                 self.last_usage_report = datetime.now()
                 if not ctx.has_class(error):
                     ctx.add_class(error)
-                self._screen.log_notification(f"{self._screen.connecting_to_printer}: {msg}", 2)
+                self._screen.log_notification(f"{os.uname().nodename}: {msg}", 2)
                 self.titlelbl.set_label(msg)
             elif ctx.has_class(error):
                 if (datetime.now() - self.last_usage_report).seconds < 5:
@@ -229,7 +229,7 @@ class BasePanel(ScreenPanel):
                     return
                 self.usage_report = 0
                 ctx.remove_class(error)
-                self.titlelbl.set_label(f"{self._screen.connecting_to_printer}")
+                self.titlelbl.set_label(f"{os.uname().nodename}")
             return
 
         if action == "notify_update_response":
@@ -299,7 +299,7 @@ class BasePanel(ScreenPanel):
     def set_title(self, title):
         self.titlebar.get_style_context().remove_class("message_popup_error")
         if not title:
-            self.titlelbl.set_label(f"{self._screen.connecting_to_printer}")
+            self.titlelbl.set_label(f"{os.uname().nodename}")
             return
         try:
             env = Environment(extensions=["jinja2.ext.i18n"], autoescape=True)
@@ -309,7 +309,8 @@ class BasePanel(ScreenPanel):
         except Exception as e:
             logging.debug(f"Error parsing jinja for title: {title}\n{e}")
 
-        self.titlelbl.set_label(f"{self._screen.connecting_to_printer} | {title}")
+        self.titlelbl.set_label(f"{os.uname().nodename} | {title}")
+
 
     def update_time(self):
         now = datetime.now()

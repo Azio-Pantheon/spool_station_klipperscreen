@@ -2,7 +2,7 @@ import logging
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, GLib, Gdk
 from panels.menu import Panel as MenuPanel
 from ks_includes.widgets.heatergraph import HeaterGraph
 from ks_includes.widgets.keypad import Keypad
@@ -143,6 +143,9 @@ class Panel(MenuPanel):
         self.labels['da'].set_showing(device, visible)
 
         temp = self._gtk.Button(label="", lines=1)
+        #rgba = Gdk.RGBA()
+        #rgba.parse('light blue')  # Set the desired background color
+        #temp.override_background_color(Gtk.StateFlags.NORMAL, rgba)
         if can_target:
             temp.connect("clicked", self.show_numpad, device)
 
