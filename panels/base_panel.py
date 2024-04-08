@@ -41,7 +41,7 @@ class BasePanel(ScreenPanel):
         }
         self.control['shutdown'] = self._gtk.Button('shutdown', scale=abscale)
         self.control['shutdown'].connect("clicked", self.menu_item_clicked, self.shutdown)
-        self.control['shutdown'].set_no_show_all(True)
+        #self.control['shutdown'].set_no_show_all(True)
         self.control['printer_select'] = self._gtk.Button('shuffle', scale=abscale)
         self.control['printer_select'].connect("clicked", self._screen.show_printer_select)
         self.control['printer_select'].set_no_show_all(True)

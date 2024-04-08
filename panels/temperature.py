@@ -460,8 +460,11 @@ class Panel(ScreenPanel):
         return self.left_panel
 
     def hide_numpad(self, widget=None):
-        self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
-        self.active_heater = None
+        
+
+        
+        #self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
+        #self.active_heater = None
 
         #for d in self.active_heaters:
         #    self.devices[d]['name'].get_style_context().add_class("button_active")
@@ -510,10 +513,11 @@ class Panel(ScreenPanel):
                 )
 
     def show_numpad(self, widget, device=None):
-        if self.active_heater is not None:
-            self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
+
+        #f self.active_heater is not None:
+        #    self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
         self.active_heater = device
-        self.devices[self.active_heater]['name'].get_style_context().add_class("button_active")
+        #self.devices[self.active_heater]['name'].get_style_context().add_class("button_active")
 
         if "keypad" not in self.labels:
             self.labels["keypad"] = Keypad(self._screen, self.change_target_temp, self.pid_calibrate, self.hide_numpad)
