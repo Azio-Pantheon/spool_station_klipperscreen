@@ -43,8 +43,8 @@ class Panel(ScreenPanel):
             # Support for hiding devices by name
             if name.startswith("_"):
                 continue
-            #if h not in self.active_heaters:
-            #    self.select_heater(None, h)
+            if h not in self.active_heaters:
+                self.select_heater(None, h)
 
         if self._screen.vertical_mode:
             self.grid.attach(self.create_right_panel(), 0, 1, 1, 1)
@@ -353,6 +353,9 @@ class Panel(ScreenPanel):
             "can_target": can_target,
             "visible": visible
         }
+
+        if self.devices[device]["can_target"]:
+            self.devices[device]['select'] = self._gtk.Button(label=_("Select"))
 
         devices = sorted(self.devices)
         pos = devices.index(device) + 1
