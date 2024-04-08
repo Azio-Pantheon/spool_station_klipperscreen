@@ -343,6 +343,7 @@ class Panel(ScreenPanel):
 
         temp = self._gtk.Button(label="", lines=1)
         if can_target:
+            temp = self._gtk.Button(label="", lines=1,style=f"color{4}")
             temp.connect("clicked", self.show_numpad, device)
 
         self.devices[device] = {

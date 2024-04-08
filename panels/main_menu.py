@@ -143,10 +143,10 @@ class Panel(MenuPanel):
         self.labels['da'].set_showing(device, visible)
 
         temp = self._gtk.Button(label="", lines=1)
-        #rgba = Gdk.RGBA()
-        #rgba.parse('light blue')  # Set the desired background color
-        #temp.override_background_color(Gtk.StateFlags.NORMAL, rgba)
+        #temp.style_set(f"color{5}")
+
         if can_target:
+            temp = self._gtk.Button(label="", lines=1,style=f"color{4}")
             temp.connect("clicked", self.show_numpad, device)
 
         self.devices[device] = {
