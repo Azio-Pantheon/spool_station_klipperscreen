@@ -209,7 +209,7 @@ class Panel(ScreenPanel):
                 logging.info(f"Deselecting {device}")
                 return
             self.active_heaters.append(device)
-            self.devices[device]['name'].get_style_context().add_class("button_active")
+            #self.devices[device]['name'].get_style_context().add_class("button_active")
             self.devices[device]['select'].set_label(_("Deselect"))
             logging.info(f"Selecting {device}")
         return
@@ -463,8 +463,8 @@ class Panel(ScreenPanel):
         
 
         
-        #self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
-        #self.active_heater = None
+        self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
+        self.active_heater = None
 
         #for d in self.active_heaters:
         #    self.devices[d]['name'].get_style_context().add_class("button_active")
@@ -514,10 +514,10 @@ class Panel(ScreenPanel):
 
     def show_numpad(self, widget, device=None):
 
-        #f self.active_heater is not None:
-        #    self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
+        if self.active_heater is not None:
+            self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
         self.active_heater = device
-        #self.devices[self.active_heater]['name'].get_style_context().add_class("button_active")
+        self.devices[self.active_heater]['name'].get_style_context().add_class("button_active")
 
         if "keypad" not in self.labels:
             self.labels["keypad"] = Keypad(self._screen, self.change_target_temp, self.pid_calibrate, self.hide_numpad)
