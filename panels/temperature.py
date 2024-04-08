@@ -65,8 +65,8 @@ class Panel(ScreenPanel):
         #right.attach(adjust, 2, 0, 1, 1)
         if self.show_preheat:
             right.attach(self.preheat(), 0, 0, 3, 3)
-        else:
-            right.attach(self.delta_adjust(), 0, 3, 3)
+        #else:
+        #    right.attach(self.delta_adjust(), 0, 3, 3)
         return right
 
     def switch_preheat_adjust(self, widget):
