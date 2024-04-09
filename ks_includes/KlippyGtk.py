@@ -287,7 +287,7 @@ class KlippyGtk:
                 style = 'dialog-default'
             dialog.add_button(button['name'], button['response'])
             button_widget = dialog.get_widget_for_response(button['response'])
-            button_widget.set_size_request(button_hsize, self.height)
+            button_widget.set_size_request(button_hsize, self.height*1.2)
             button_widget.get_style_context().add_class(style)
             format_label(button, 2)
 
