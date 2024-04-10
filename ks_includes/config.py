@@ -241,10 +241,10 @@ class KlipperScreenConfig:
                 "section": "main", "name": _("Language"), "type": None, "value": "system_lang",
                 "callback": screen.change_language, "options": [
                     {"name": _("System") + " " + _("(default)"), "value": "system_lang"}]}},
-            {"theme": {
-                "section": "main", "name": _("Icon Theme"), "type": "dropdown",
-                "value": "z-bolt", "callback": screen.restart_ks, "options": [
-                    {"name": "Z-bolt" + " " + _("(default)"), "value": "z-bolt"}]}},
+            # {"theme": {
+            #     "section": "main", "name": _("Icon Theme"), "type": "dropdown",
+            #     "value": "z-bolt", "callback": screen.restart_ks, "options": [
+            #         {"name": "Z-bolt" + " " + _("(default)"), "value": "z-bolt"}]}},
             #{"print_estimate_method": {
             #    "section": "main", "name": _("Estimated Time Method"), "type": "dropdown",
             #    "value": "auto", "options": [
@@ -333,12 +333,12 @@ class KlipperScreenConfig:
         self.configurable_options.extend(panel_options)
 
         t_path = os.path.join(klipperscreendir, 'styles')
-        themes = [d for d in os.listdir(t_path) if (not os.path.isfile(os.path.join(t_path, d)) and d != "z-bolt")]
-        themes.sort()
-        theme_opt = self.configurable_options[1]['theme']['options']
+        # themes = [d for d in os.listdir(t_path) if (not os.path.isfile(os.path.join(t_path, d)) and d != "z-bolt")]
+        # themes.sort()
+        # theme_opt = self.configurable_options[1]['theme']['options']
 
-        for theme in themes:
-            theme_opt.append({"name": theme, "value": theme})
+        # for theme in themes:
+        #     theme_opt.append({"name": theme, "value": theme})
 
         index = self.configurable_options.index(
             [i for i in self.configurable_options if list(i)[0] == "screen_blanking"][0])
