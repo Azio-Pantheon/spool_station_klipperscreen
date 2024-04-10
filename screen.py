@@ -1120,6 +1120,20 @@ class KlipperScreen(Gtk.Window):
             self.aspect_ratio = new_ratio
             logging.info(f"Vertical mode: {self.vertical_mode}")
 
+    def change_time_zone(self, *args):
+        self._config.get_main_config().get('time_zone')
+        try:
+            # Run the command to set the timezone
+            subprocess.run(['sudo', 'timedatectl', 'set-timezone', self._config.get_main_config().get('time_zone')], check=True)
+            print(f"Timezone successfully changed to Europe/London.")
+        except subprocess.CalledProcessError as e:
+            # An error occurred while trying to change the timezone
+            self.restart_ks()
+            print(f"Failed to change timezone. Error: {e}")
+        #self.reload_panels()
+        self.restart_ks()
+
+
 
 def main():
     minimum = (3, 7)
