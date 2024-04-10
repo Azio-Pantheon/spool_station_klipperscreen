@@ -43,8 +43,8 @@ class Panel(ScreenPanel):
             # Support for hiding devices by name
             if name.startswith("_"):
                 continue
-            #if h not in self.active_heaters:
-            #    self.select_heater(None, h)
+            if h not in self.active_heaters:
+                self.select_heater(None, h)
 
         if self._screen.vertical_mode:
             self.grid.attach(self.create_right_panel(), 0, 1, 1, 1)
@@ -65,8 +65,8 @@ class Panel(ScreenPanel):
         #right.attach(adjust, 2, 0, 1, 1)
         if self.show_preheat:
             right.attach(self.preheat(), 0, 0, 3, 3)
-        else:
-            right.attach(self.delta_adjust(), 0, 3, 3)
+        #else:
+        #    right.attach(self.delta_adjust(), 0, 3, 3)
         return right
 
     def switch_preheat_adjust(self, widget):
@@ -209,7 +209,7 @@ class Panel(ScreenPanel):
                 logging.info(f"Deselecting {device}")
                 return
             self.active_heaters.append(device)
-            self.devices[device]['name'].get_style_context().add_class("button_active")
+            #self.devices[device]['name'].get_style_context().add_class("button_active")
             self.devices[device]['select'].set_label(_("Deselect"))
             logging.info(f"Selecting {device}")
         return
@@ -343,6 +343,7 @@ class Panel(ScreenPanel):
 
         temp = self._gtk.Button(label="", lines=1)
         if can_target:
+            temp = self._gtk.Button(label="", lines=1,style=f"color{4}")
             temp.connect("clicked", self.show_numpad, device)
 
         self.devices[device] = {
@@ -352,6 +353,9 @@ class Panel(ScreenPanel):
             "can_target": can_target,
             "visible": visible
         }
+
+        if self.devices[device]["can_target"]:
+            self.devices[device]['select'] = self._gtk.Button(label=_("Select"))
 
         devices = sorted(self.devices)
         pos = devices.index(device) + 1
@@ -456,6 +460,9 @@ class Panel(ScreenPanel):
         return self.left_panel
 
     def hide_numpad(self, widget=None):
+        
+
+        
         self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
         self.active_heater = None
 
@@ -506,6 +513,7 @@ class Panel(ScreenPanel):
                 )
 
     def show_numpad(self, widget, device=None):
+
         if self.active_heater is not None:
             self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
         self.active_heater = device

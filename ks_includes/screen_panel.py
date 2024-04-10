@@ -39,11 +39,11 @@ class ScreenPanel:
 
     def emergency_stop(self, widget):
         if self._config.get_main_config().getboolean('confirm_estop', False):
-            self._screen._confirm_send_action(widget, _("Are you sure you want to run Emergency Stop?"),
+            self._screen.estop_confirm_send_action(widget, _("Are you sure you want to run Emergency Stop?"),
                                               "printer.emergency_stop")
         else:
             self._screen._ws.klippy.emergency_stop()
-        self._screen._ws.klippy.emergency_stop()
+        #self._screen._ws.klippy.emergency_stop()
 
     def get_file_image(self, filename, width=None, height=None, small=False):
         if not self._files.has_thumbnail(filename):

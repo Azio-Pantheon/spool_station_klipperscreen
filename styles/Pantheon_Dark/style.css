@@ -187,11 +187,16 @@ scrollbar slider {
 
 .dialog button:nth-child(1) {
     border-bottom-color: @color4;
+
 }
 
 .dialog button:nth-child(2) {
     border-bottom-color: @error;
+
 }
+
+
+
 
 .horizontal_togglebuttons {
     border: none;

@@ -841,6 +841,28 @@ class KlipperScreen(Gtk.Window):
             "KlipperScreen", buttons, label, self._confirm_send_action_response, method, params
         )
 
+    def estop_confirm_send_action(self, widget, text, method, params=None):
+        buttons = [
+            {"name": _("STOP"), "response": Gtk.ResponseType.OK, "style": 'dialog-eStop'},
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-eStopCancel'}
+        ]
+
+        #try:
+        #    j2_temp = self.env.from_string(text)
+        #    text = j2_temp.render()
+        #except Exception as e:
+        #    logging.debug(f"Error parsing jinja for confirm_send_action\n{e}\n\n{traceback.format_exc()}")
+
+        label = Gtk.Label(hexpand=True, vexpand=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,
+                          wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        #label.set_markup(text)
+
+        if self.confirm is not None:
+            self.gtk.remove_dialog(self.confirm)
+        self.confirm = self.gtk.eDialog(
+            "KlipperScreen", buttons, label, self._confirm_send_action_response, method, params
+        )
+
     def _confirm_send_action_response(self, dialog, response_id, method, params):
         self.gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
