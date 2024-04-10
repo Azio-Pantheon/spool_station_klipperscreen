@@ -162,7 +162,8 @@ class KlipperScreenConfig:
                 )
                 strs = (
                     'default_printer', 'language', 'print_sort_dir', 'theme', 'screen_blanking', 'font_size',
-                    'print_estimate_method', 'screen_blanking', "screen_on_devices", "screen_off_devices", 'print_view',
+                    'print_estimate_method', 'screen_blanking', "screen_on_devices", "screen_off_devices", 'print_view', 
+                    'time_zone'
                 )
                 numbers = (
                     'job_complete_timeout', 'job_error_timeout', 'move_speed_xy', 'move_speed_z',
@@ -244,22 +245,22 @@ class KlipperScreenConfig:
                 "section": "main", "name": _("Icon Theme"), "type": "dropdown",
                 "value": "z-bolt", "callback": screen.restart_ks, "options": [
                     {"name": "Z-bolt" + " " + _("(default)"), "value": "z-bolt"}]}},
-            {"print_estimate_method": {
-                "section": "main", "name": _("Estimated Time Method"), "type": "dropdown",
-                "value": "auto", "options": [
-                    {"name": _("Auto") + " " + _("(default)"), "value": "auto"},
-                    {"name": _("File"), "value": "file"},
-                    {"name": _("Filament Used"), "value": "filament"},
-                    {"name": _("Slicer"), "value": "slicer"}]}},
+            #{"print_estimate_method": {
+            #    "section": "main", "name": _("Estimated Time Method"), "type": "dropdown",
+            #    "value": "auto", "options": [
+            #        {"name": _("Auto") + " " + _("(default)"), "value": "auto"},
+            #        {"name": _("File"), "value": "file"},
+            #        {"name": _("Filament Used"), "value": "filament"},
+            #        {"name": _("Slicer"), "value": "slicer"}]}},
             {"screen_blanking": {
                 "section": "main", "name": _("Screen Power Off Time"), "type": "dropdown",
                 "value": "3600", "callback": screen.set_screenblanking_timeout, "options": [
                     {"name": _("Never"), "value": "off"}]
             }},
             {"24htime": {"section": "main", "name": _("24 Hour Time"), "type": "binary", "value": "True"}},
-            {"side_macro_shortcut": {
-                "section": "main", "name": _("Macro shortcut on sidebar"), "type": "binary",
-                "value": "True", "callback": screen.toggle_shortcut}},
+            #{"side_macro_shortcut": {
+            #    "section": "main", "name": _("Macro shortcut on sidebar"), "type": "binary",
+            #    "value": "True", "callback": screen.toggle_shortcut}},
             {"font_size": {
                 "section": "main", "name": _("Font Size"), "type": "dropdown",
                 "value": "medium", "callback": screen.restart_ks, "options": [
@@ -268,20 +269,28 @@ class KlipperScreenConfig:
                     {"name": _("Large"), "value": "large"},
                     {"name": _("Extra Large"), "value": "extralarge"},
                     {"name": _("Maximum"), "value": "max"}]}},
+            {"time_zone": {
+                "section": "main", "name": _("Time Zone"), "type": "dropdown",
+                "value": "medium", "callback": screen.change_language, "options": [
+                    {"name": _("Small"), "value": "small"},
+                    {"name": _("Medium") + " " + _("(default)"), "value": "medium"},
+                    {"name": _("Large"), "value": "large"},
+                    {"name": _("Extra Large"), "value": "extralarge"},
+                    {"name": _("Maximum"), "value": "max"}]}},
             {"confirm_estop": {"section": "main", "name": _("Confirm Emergency Stop"), "type": "binary",
                                "value": "False"}},
-            {"only_heaters": {"section": "main", "name": _("Hide sensors in Temp."), "type": "binary",
-                              "value": "False", "callback": screen.reload_panels}},
-            {"use_dpms": {"section": "main", "name": _("Screen DPMS"), "type": "binary",
-                          "value": "True", "callback": screen.set_dpms}},
-            {"autoclose_popups": {"section": "main", "name": _("Auto-close notifications"), "type": "binary",
-                                  "value": "True"}},
-            {"show_heater_power": {"section": "main", "name": _("Show Heater Power"), "type": "binary",
-                                   "value": "False", "callback": screen.reload_panels}},
-            {"show_scroll_steppers": {"section": "main", "name": _("Show Scrollbars Buttons"), "type": "binary",
-                                      "value": "False", "callback": screen.reload_panels}},
-            {"auto_open_extrude": {"section": "main", "name": _("Auto-open Extrude On Pause"), "type": "binary",
-                                   "value": "True", "callback": screen.reload_panels}},
+            #{"only_heaters": {"section": "main", "name": _("Hide sensors in Temp."), "type": "binary",
+            #                  "value": "False", "callback": screen.reload_panels}},
+            #{"use_dpms": {"section": "main", "name": _("Screen DPMS"), "type": "binary",
+            #              "value": "True", "callback": screen.set_dpms}},
+            #{"autoclose_popups": {"section": "main", "name": _("Auto-close notifications"), "type": "binary",
+            #                      "value": "True"}},
+            #{"show_heater_power": {"section": "main", "name": _("Show Heater Power"), "type": "binary",
+            #                       "value": "False", "callback": screen.reload_panels}},
+            #{"show_scroll_steppers": {"section": "main", "name": _("Show Scrollbars Buttons"), "type": "binary",
+            #                          "value": "False", "callback": screen.reload_panels}},
+            #{"auto_open_extrude": {"section": "main", "name": _("Auto-open Extrude On Pause"), "type": "binary",
+            #                       "value": "True", "callback": screen.reload_panels}},
             # {"": {"section": "main", "name": _(""), "type": ""}}
         ]
 
