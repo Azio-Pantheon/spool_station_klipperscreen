@@ -59,8 +59,8 @@ class Panel(ScreenPanel):
             extgrid.attach(self.labels[f"edelta{i}"], j, 0, 1, 1)
         grid = Gtk.Grid(column_homogeneous=True)
 
-        self.labels['z+'] = self._gtk.Button("z-farther", "Z+", "color1")
-        self.labels['z-'] = self._gtk.Button("z-closer", "Z-", "color1")
+        self.labels['z+'] = self._gtk.Button("z-farther", "Bed Up", "color1")  #Z+
+        self.labels['z-'] = self._gtk.Button("z-closer", "Bed Down", "color1")     #Z-
         self.labels['zoffset'] = self._gtk.Button("refresh", '  0.00' + _("mm"),
                                                   "color1", self.bts, Gtk.PositionType.LEFT, 1)
         self.labels['speed+'] = self._gtk.Button("speed+", _("Speed +"), "color3")

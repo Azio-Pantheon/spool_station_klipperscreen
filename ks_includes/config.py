@@ -162,7 +162,8 @@ class KlipperScreenConfig:
                 )
                 strs = (
                     'default_printer', 'language', 'print_sort_dir', 'theme', 'screen_blanking', 'font_size',
-                    'print_estimate_method', 'screen_blanking', "screen_on_devices", "screen_off_devices", 'print_view',
+                    'print_estimate_method', 'screen_blanking', "screen_on_devices", "screen_off_devices", 'print_view', 
+                    'time_zone'
                 )
                 numbers = (
                     'job_complete_timeout', 'job_error_timeout', 'move_speed_xy', 'move_speed_z',
@@ -242,24 +243,13 @@ class KlipperScreenConfig:
                     {"name": _("System") + " " + _("(default)"), "value": "system_lang"}]}},
             {"theme": {
                 "section": "main", "name": _("Icon Theme"), "type": "dropdown",
-                "value": "z-bolt", "callback": screen.restart_ks, "options": [
-                    {"name": "Z-bolt" + " " + _("(default)"), "value": "z-bolt"}]}},
-            {"print_estimate_method": {
-                "section": "main", "name": _("Estimated Time Method"), "type": "dropdown",
-                "value": "auto", "options": [
-                    {"name": _("Auto") + " " + _("(default)"), "value": "auto"},
-                    {"name": _("File"), "value": "file"},
-                    {"name": _("Filament Used"), "value": "filament"},
-                    {"name": _("Slicer"), "value": "slicer"}]}},
+                "value": "Pantheon", "callback": screen.restart_ks, "options": [
+                    {"name": "Pantheon" + " " + _("(default)"), "value": "z-bolt"}]}},
             {"screen_blanking": {
                 "section": "main", "name": _("Screen Power Off Time"), "type": "dropdown",
                 "value": "3600", "callback": screen.set_screenblanking_timeout, "options": [
                     {"name": _("Never"), "value": "off"}]
             }},
-            {"24htime": {"section": "main", "name": _("24 Hour Time"), "type": "binary", "value": "True"}},
-            {"side_macro_shortcut": {
-                "section": "main", "name": _("Macro shortcut on sidebar"), "type": "binary",
-                "value": "True", "callback": screen.toggle_shortcut}},
             {"font_size": {
                 "section": "main", "name": _("Font Size"), "type": "dropdown",
                 "value": "medium", "callback": screen.restart_ks, "options": [
@@ -268,20 +258,41 @@ class KlipperScreenConfig:
                     {"name": _("Large"), "value": "large"},
                     {"name": _("Extra Large"), "value": "extralarge"},
                     {"name": _("Maximum"), "value": "max"}]}},
+            {"time_zone": {
+                "section": "main", "name": _("Time Zone"), "type": "dropdown",
+                "value": "medium", "callback": screen.change_time_zone, "options": [
+                    {"name": _("(UTC-08:00) Pacific Standard Time (US & Canada)"), "value": "America/Vancouver"},
+                    {"name": _("(UTC-07:00) Mountain Time (US & Canada)"), "value": "America/Boise"},
+                    {"name": _("(UTC-06:00) Central Time (US & Canada)"), "value": "America/Chicago"},
+                    {"name": _("(UTC-05:00) Eastern Time (US & Canada)"), "value": "America/Detroit"},
+                    {"name": _("(UTC-12:00)"), "value": "Etc/GMT+12"},
+                    {"name": _("(UTC-11:00)"), "value": "Etc/GMT+11"},
+                    {"name": _("(UTC-10:00)"), "value": "Etc/GMT+10"},
+                    {"name": _("(UTC-09:00)"), "value": "Etc/GMT+9"},
+                    {"name": _("(UTC-08:00)"), "value": "Etc/GMT+8"},
+                    {"name": _("(UTC-07:00)"), "value": "Etc/GMT+7"},
+                    {"name": _("(UTC-06:00)"), "value": "Etc/GMT+6"},
+                    {"name": _("(UTC-05:00)"), "value": "Etc/GMT+5"},
+                    {"name": _("(UTC-04:00)"), "value": "Etc/GMT+4"},
+                    {"name": _("(UTC-03:00)"), "value": "Etc/GMT+3"},
+                    {"name": _("(UTC-02:00)"), "value": "Etc/GMT+2"},
+                    {"name": _("(UTC-01:00)"), "value": "Etc/GMT+1"},
+                    {"name": _("(UTC)"), "value": "Etc/GMT"},
+                    {"name": _("(UTC+01:00)"), "value": "Etc/GMT-1"},
+                    {"name": _("(UTC+02:00)"), "value": "Etc/GMT-2"},
+                    {"name": _("(UTC+03:00)"), "value": "Etc/GMT-3"},
+                    {"name": _("(UTC+04:00)"), "value": "Etc/GMT-4"},
+                    {"name": _("(UTC-05:00)"), "value": "Etc/GMT-5"},
+                    {"name": _("(UTC+06:00)"), "value": "Etc/GMT-6"},
+                    {"name": _("(UTC+07:00)"), "value": "Etc/GMT-7"},
+                    {"name": _("(UTC+08:00)"), "value": "Etc/GMT-8"},
+                    {"name": _("(UTC+09:00)"), "value": "Etc/GMT-9"},
+                    {"name": _("(UTC+10:00)"), "value": "Etc/GMT-10"},
+                    {"name": _("(UTC+11:00)"), "value": "Etc/GMT-11"},
+                    {"name": _("(UTC+12:00)"), "value": "Etc/GMT-12"},
+                    {"name": _("(UTC+13:00)"), "value": "Etc/GMT-13"}]}},
             {"confirm_estop": {"section": "main", "name": _("Confirm Emergency Stop"), "type": "binary",
                                "value": "False"}},
-            {"only_heaters": {"section": "main", "name": _("Hide sensors in Temp."), "type": "binary",
-                              "value": "False", "callback": screen.reload_panels}},
-            {"use_dpms": {"section": "main", "name": _("Screen DPMS"), "type": "binary",
-                          "value": "True", "callback": screen.set_dpms}},
-            {"autoclose_popups": {"section": "main", "name": _("Auto-close notifications"), "type": "binary",
-                                  "value": "True"}},
-            {"show_heater_power": {"section": "main", "name": _("Show Heater Power"), "type": "binary",
-                                   "value": "False", "callback": screen.reload_panels}},
-            {"show_scroll_steppers": {"section": "main", "name": _("Show Scrollbars Buttons"), "type": "binary",
-                                      "value": "False", "callback": screen.reload_panels}},
-            {"auto_open_extrude": {"section": "main", "name": _("Auto-open Extrude On Pause"), "type": "binary",
-                                   "value": "True", "callback": screen.reload_panels}},
             # {"": {"section": "main", "name": _(""), "type": ""}}
         ]
 
@@ -299,7 +310,8 @@ class KlipperScreenConfig:
         self.configurable_options.extend(panel_options)
 
         t_path = os.path.join(klipperscreendir, 'styles')
-        themes = [d for d in os.listdir(t_path) if (not os.path.isfile(os.path.join(t_path, d)) and d != "z-bolt")]
+        themes = [d for d in os.listdir(t_path) if (not os.path.isfile(os.path.join(t_path, d)) and "Pantheon" in d and d != "Pantheon")]
+        
         themes.sort()
         theme_opt = self.configurable_options[1]['theme']['options']
 

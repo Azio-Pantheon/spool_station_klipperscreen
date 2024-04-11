@@ -164,7 +164,7 @@ class Panel(ScreenPanel):
             row.attach(delete, 3, 1, 1, 1)
             if 'filename' in item:
                 icon.connect("clicked", self.confirm_print, path)
-                image_args = (path, icon, self.thumbsize / 2, True, "file")
+                image_args = (path, icon, self.thumbsize, False, "file")
                 delete.connect("clicked", self.confirm_delete_file, f"gcodes/{path}")
                 rename.connect("clicked", self.show_rename, f"gcodes/{path}")
                 action = self._gtk.Button("print", style="color3")
@@ -175,7 +175,7 @@ class Panel(ScreenPanel):
                 row.attach(action, 4, 0, 1, 2)
             elif 'dirname' in item:
                 icon.connect("clicked", self.change_dir, path)
-                image_args = (None, icon, self.thumbsize / 2, True, "folder")
+                image_args = (None, icon, self.thumbsize, False, "folder")
                 delete.connect("clicked", self.confirm_delete_directory, path)
                 rename.connect("clicked", self.show_rename, path)
                 action = self._gtk.Button("load", style="color3")

@@ -263,3 +263,56 @@ class KlippyGtk:
         if self.screen._config.get_main_config().getboolean("show_scroll_steppers", fallback=False) and steppers:
             scroll.get_vscrollbar().get_style_context().add_class("with-steppers")
         return scroll
+
+    def EmergencyStopDialog(self, title, buttons, content, callback=None, *args):
+        dialog = Gtk.Dialog(title=title, modal=True, transient_for=self.screen,
+                            default_width=self.width, default_height=self.height)
+        if not self.screen.windowed:
+            dialog.fullscreen()
+
+        max_buttons = 3 if self.screen.vertical_mode else 4
+        if len(buttons) > max_buttons:
+            buttons = buttons[:max_buttons]
+        if len(buttons) > 2:
+            dialog.get_action_area().set_layout(Gtk.ButtonBoxStyle.EXPAND)
+            button_hsize = -1
+        else:
+            button_hsize = int((self.width / 2))
+
+        for i in range(len(buttons)):
+            button = buttons[i]
+            if 'style' in button:
+                style = button['style']
+            else:
+                style = 'dialog-default'
+            dialog.add_button(button['name'], button['response'])
+            button_widget = dialog.get_widget_for_response(button['response'])
+            button_widget.set_size_request(button_hsize, self.height*1.2)
+            button_widget.get_style_context().add_class(style)
+            format_label(button, 2)
+
+
+
+        dialog.connect("response", self.screen.reset_screensaver_timeout)
+        dialog.connect("response", callback, *args)
+        dialog.get_style_context().add_class("dialog")
+
+        content_area = dialog.get_content_area()
+        content_area.set_margin_start(15)
+        content_area.set_margin_end(15)
+        content_area.set_margin_top(15)
+        content_area.set_margin_bottom(15)
+        content_area.add(content)
+
+        dialog.show_all()
+        # Change cursor to blank
+        if self.cursor:
+            dialog.get_window().set_cursor(
+                Gdk.Cursor.new_for_display(Gdk.Display.get_default(), Gdk.CursorType.ARROW))
+        else:
+            dialog.get_window().set_cursor(
+                Gdk.Cursor.new_for_display(Gdk.Display.get_default(), Gdk.CursorType.BLANK_CURSOR))
+
+        self.screen.dialogs.append(dialog)
+        logging.info(f"Showing dialog {dialog.get_title()} {dialog.get_size()}")
+        return dialog

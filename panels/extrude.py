@@ -36,16 +36,16 @@ class Panel(ScreenPanel):
         self.speed = int(self.speeds[1])
         self.buttons = {
             'extrude': self._gtk.Button("extrude", _("Extrude"), "color4"),
+            'retract': self._gtk.Button("retract", _("Retract"), "color1"),
             'load': self._gtk.Button("arrow-down", _("Load"), "color3"),
             'unload': self._gtk.Button("arrow-up", _("Unload"), "color2"),
-            'retract': self._gtk.Button("retract", _("Retract"), "color1"),
             'temperature': self._gtk.Button("heat-up", _("Temperature"), "color4"),
             'spoolman': self._gtk.Button("spoolman", "Spoolman", "color3"),
         }
         self.buttons['extrude'].connect("clicked", self.extrude, "+")
+        self.buttons['retract'].connect("clicked", self.extrude, "-")
         self.buttons['load'].connect("clicked", self.load_unload, "+")
         self.buttons['unload'].connect("clicked", self.load_unload, "-")
-        self.buttons['retract'].connect("clicked", self.extrude, "-")
         self.buttons['temperature'].connect("clicked", self.menu_item_clicked, {
             "name": "Temperature",
             "panel": "temperature"
@@ -151,9 +151,9 @@ class Panel(ScreenPanel):
             grid.attach(sensors, 0, 5, 4, 1)
         else:
             grid.attach(self.buttons['extrude'], 0, 2, 1, 1)
-            grid.attach(self.buttons['load'], 1, 2, 1, 1)
-            grid.attach(self.buttons['unload'], 2, 2, 1, 1)
-            grid.attach(self.buttons['retract'], 3, 2, 1, 1)
+            grid.attach(self.buttons['load'], 2, 2, 1, 1)
+            grid.attach(self.buttons['unload'], 3, 2, 1, 1)
+            grid.attach(self.buttons['retract'], 1, 2, 1, 1)
             grid.attach(distbox, 0, 3, 2, 1)
             grid.attach(speedbox, 2, 3, 2, 1)
             grid.attach(sensors, 0, 4, 4, 1)

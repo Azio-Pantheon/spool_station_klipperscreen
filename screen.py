@@ -841,6 +841,21 @@ class KlipperScreen(Gtk.Window):
             "KlipperScreen", buttons, label, self._confirm_send_action_response, method, params
         )
 
+    def emergency_stop_confirm_send_action(self, widget, text, method, params=None):
+        buttons = [
+            {"name": _("STOP"), "response": Gtk.ResponseType.OK, "style": 'dialog-emergencyStop'},
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-emergencyStopCancel'}
+        ]
+
+        label = Gtk.Label(hexpand=True, vexpand=True, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER,
+                          wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+
+        if self.confirm is not None:
+            self.gtk.remove_dialog(self.confirm)
+        self.confirm = self.gtk.EmergencyStopDialog(
+            "KlipperScreen", buttons, label, self._confirm_send_action_response, method, params
+        )
+
     def _confirm_send_action_response(self, dialog, response_id, method, params):
         self.gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
@@ -1097,6 +1112,20 @@ class KlipperScreen(Gtk.Window):
             self.vertical_mode = new_mode
             self.aspect_ratio = new_ratio
             logging.info(f"Vertical mode: {self.vertical_mode}")
+
+    def change_time_zone(self, *args):
+        self._config.get_main_config().get('time_zone')
+        try:
+            # Run the command to set the timezone
+            subprocess.run(['sudo', 'timedatectl', 'set-timezone', self._config.get_main_config().get('time_zone')], check=True)
+            print(f"Timezone successfully changed to Europe/London.")
+        except subprocess.CalledProcessError as e:
+            # An error occurred while trying to change the timezone
+            self.restart_ks()
+            print(f"Failed to change timezone. Error: {e}")
+        #self.reload_panels()
+        self.restart_ks()
+
 
 
 def main():
