@@ -282,7 +282,7 @@ class KlipperScreenConfig:
                     {"name": _("(UTC+02:00)"), "value": "Etc/GMT-2"},
                     {"name": _("(UTC+03:00)"), "value": "Etc/GMT-3"},
                     {"name": _("(UTC+04:00)"), "value": "Etc/GMT-4"},
-                    {"name": _("(UTC-05:00)"), "value": "Etc/GMT-4"},
+                    {"name": _("(UTC-05:00)"), "value": "Etc/GMT-5"},
                     {"name": _("(UTC+06:00)"), "value": "Etc/GMT-6"},
                     {"name": _("(UTC+07:00)"), "value": "Etc/GMT-7"},
                     {"name": _("(UTC+08:00)"), "value": "Etc/GMT-8"},
