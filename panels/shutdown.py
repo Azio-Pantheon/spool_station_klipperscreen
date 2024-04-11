@@ -21,8 +21,6 @@ class Panel(ScreenPanel):
         restart.connect("clicked", self.reboot_poweroff, "reboot")
 
         self.main = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
-        #if self._printer and self._printer.state not in {'disconnected', 'startup', 'shutdown', 'error'}:
-        #    self.main.attach(estop, 0, 0, 2, 1)
         self.main.attach(poweroff, 0, 1, 1, 1)
         self.main.attach(restart, 1, 1, 1, 1)
         self.content.add(self.main)

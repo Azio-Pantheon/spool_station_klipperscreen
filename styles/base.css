@@ -630,12 +630,12 @@ trough progress {
     border-bottom: .4em solid @color1;
 }
 
-.dialog-eStop {
+.dialog-emergencyStop {
     border-bottom: .4em solid @color1;
     background-image: linear-gradient(to right, red, red);
 }
 
-.dialog-eStopCancel {
+.dialog-emergencyStopCancel {
     border-bottom: .4em solid @color1;
     background-image: linear-gradient(to right, green, green);
 }

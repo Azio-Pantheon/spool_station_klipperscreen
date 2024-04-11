@@ -55,18 +55,12 @@ class Panel(ScreenPanel):
 
 
     def create_right_panel(self):
-        #cooldown = self._gtk.Button('cool-down', _('Cooldown'), "color4", self.bts, Gtk.PositionType.LEFT, 1)
-        #adjust = self._gtk.Button('fine-tune', None, "color3", self.bts * 1.4, Gtk.PositionType.LEFT, 1)
-        #cooldown.connect("clicked", self.set_temperature, "cooldown")
-        #adjust.connect("clicked", self.switch_preheat_adjust)
+
         right = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
-        #right.attach(cooldown, 2, 2, 1, 1)
-        
-        #right.attach(adjust, 2, 0, 1, 1)
+
         if self.show_preheat:
             right.attach(self.preheat(), 0, 0, 3, 3)
-        #else:
-        #    right.attach(self.delta_adjust(), 0, 3, 3)
+
         return right
 
     def switch_preheat_adjust(self, widget):
@@ -209,7 +203,6 @@ class Panel(ScreenPanel):
                 logging.info(f"Deselecting {device}")
                 return
             self.active_heaters.append(device)
-            #self.devices[device]['name'].get_style_context().add_class("button_active")
             self.devices[device]['select'].set_label(_("Deselect"))
             logging.info(f"Selecting {device}")
         return
@@ -460,14 +453,8 @@ class Panel(ScreenPanel):
         return self.left_panel
 
     def hide_numpad(self, widget=None):
-        
-
-        
         self.devices[self.active_heater]['name'].get_style_context().remove_class("button_active")
         self.active_heater = None
-
-        #for d in self.active_heaters:
-        #    self.devices[d]['name'].get_style_context().add_class("button_active")
 
         if self._screen.vertical_mode:
             self.grid.remove_row(1)
@@ -533,8 +520,6 @@ class Panel(ScreenPanel):
             self.grid.remove_column(1)
             self.grid.attach(self.labels["keypad"], 1, 0, 1, 1)
         self.grid.show_all()
-
-        #self.labels['popover'].popdown()
 
     def update_graph(self):
         self.labels['da'].queue_draw()
