@@ -75,7 +75,7 @@ class BasePanel(ScreenPanel):
         self.action_bar.add(self.control['back'])
         self.action_bar.add(self.control['home'])
         self.action_bar.add(self.control['printer_select'])
-        self.action_bar.add(self.control['shortcut'])
+        #self.action_bar.add(self.control['shortcut'])
         self.action_bar.add(self.control['shutdown'])
         self.action_bar.add(self.control['estop'])
         self.show_printer_select(len(self._config.get_printers()) > 1)
@@ -194,7 +194,7 @@ class BasePanel(ScreenPanel):
         
         self.control['shutdown'].set_visible(not printing)
         self.control['estop'].set_visible(printing)
-        #self.show_shortcut(connected)
+        self.show_shortcut(connected)
         self.show_heaters(connected)
         for control in ('back', 'home'):
             self.set_control_sensitive(len(self._screen._cur_panels) > 1, control=control)
