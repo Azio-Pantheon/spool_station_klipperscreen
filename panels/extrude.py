@@ -62,12 +62,13 @@ class Panel(ScreenPanel):
         for extruder in self._printer.get_tools():
             if self._printer.extrudercount == 1:
                 self.labels[extruder] = self._gtk.Button("extruder", "")
+                self.labels[extruder].set_sensitive(False)
             else:
                 n = self._printer.get_tool_number(extruder)
                 self.labels[extruder] = self._gtk.Button(f"extruder-{n}", f"T{n}")
                 self.labels[extruder].connect("clicked", self.change_extruder, extruder)
             if extruder == self.current_extruder:
-                self.labels[extruder].get_style_context().add_class("button_active")
+                self.labels[extruder].get_style_context().add_class("button_fake")
             if self._printer.extrudercount <= limit:
                 xbox.add(self.labels[extruder])
                 i += 1
@@ -88,6 +89,7 @@ class Panel(ScreenPanel):
             xbox.add(self.buttons['temperature'])
         if i < (limit - 1) and self._printer.spoolman:
             xbox.add(self.buttons['spoolman'])
+            
 
         distgrid = Gtk.Grid()
         for j, i in enumerate(self.distances):

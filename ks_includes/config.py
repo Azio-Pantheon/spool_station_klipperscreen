@@ -292,7 +292,7 @@ class KlipperScreenConfig:
                     {"name": _("(UTC+12:00)"), "value": "Etc/GMT-12"},
                     {"name": _("(UTC+13:00)"), "value": "Etc/GMT-13"}]}},
             {"confirm_estop": {"section": "main", "name": _("Confirm Emergency Stop"), "type": "binary",
-                               "value": "False"}},
+                               "value": "True"}},
             # {"": {"section": "main", "name": _(""), "type": ""}}
         ]
 
