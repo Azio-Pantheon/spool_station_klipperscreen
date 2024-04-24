@@ -11,17 +11,19 @@
 @define-color pantheon-orange #cb4b16;
 @define-color pantheon-red #dc322f;
 @define-color pantheon-magenta #d33682;
-@define-color pantheon-violet #6c71c4;
-@define-color pantheon-blue #268bd2;
 @define-color pantheon-cyan #2aa198;
 @define-color pantheon-green #859900;
-
-@define-color pantheon-grey #414042;
 @define-color Pantheon-button-grey #272627;
 @define-color Pantheon-background-grey #1a191a;
-
-@define-color pantheon-mint-corrected #66BE8E;
 @define-color pantheon-beige-corrected #c0a88c;
+
+@define-color pantheon-mint #66BE8E;
+@define-color pantheon-violet #b894c4;
+@define-color pantheon-peach #f0d3b0;
+@define-color pantheon-pink #f69894;
+@define-color pantheon-blue #4f4c81;
+@define-color pantheon-yellow #fff3b5;
+@define-color pantheon-grey #414042;
 
 * {
     color: @pantheon-off-white;
@@ -38,38 +40,7 @@ button {
 }
 
 button:active {
-    background-color: @pantheon-mint-corrected;
-}
-
-.button_active {
-    border-color: @Pantheon-button-grey;
-    border-style: solid;
-    border-radius: 0.25em;
-    background-color: @Pantheon-button-grey;
-}
-
-button.color1 {
-    background-color: @Pantheon-button-grey;
-    border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 0.25em;
-}
-
-button.color2 {
-    background-color: @Pantheon-button-grey;
-    border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 0.25em;
-}
-
-button.color3 {
-    background-color: @Pantheon-button-grey;
-    border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 0.25em;
-}
-
-button.color4 {
-    background-color: @Pantheon-button-grey;
-    border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 0.25em;
+    background-color: @pantheon-mint;
 }
 
 button.color1:active,
@@ -80,8 +51,44 @@ button.update:active,
 button.invalid:active,
 .dialog button:active {
     border-style: none;
-    background-color: @pantheon-mint-corrected;
+    background-color: @pantheon-mint;
     margin-top: .5em;
+}
+
+
+.button_active {
+    border-color: @Pantheon-button-grey;
+    border-style: solid;
+    border-radius: 0.25em;
+    background-color: @Pantheon-button-grey;
+}
+
+button.color1 {
+    background-color: @Pantheon-button-grey;
+    border-bottom-color: @Pantheon-background-grey;
+    border-radius: 0.25em;
+}
+
+button.color2 {
+    background-color: @Pantheon-button-grey;
+    border-bottom-color: @Pantheon-background-grey;
+    border-radius: 0.25em;
+}
+
+button.color3 {
+    background-color: @Pantheon-button-grey;
+    border-bottom-color: @Pantheon-background-grey;
+    border-radius: 0.25em;
+}
+
+button.color4 {
+    background-color: @Pantheon-button-grey;
+    border-bottom-color: @Pantheon-background-grey;
+    border-radius: 0.25em;
+}
+
+button.print {
+    border-bottom-color: @pantheon-mint;
 }
 
 button.active {

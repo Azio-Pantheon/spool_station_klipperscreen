@@ -244,7 +244,7 @@ class KlipperScreenConfig:
             {"theme": {
                 "section": "main", "name": _("Icon Theme"), "type": "dropdown",
                 "value": "Pantheon", "callback": screen.restart_ks, "options": [
-                    {"name": "Pantheon" + " " + _("(default)"), "value": "z-bolt"}]}},
+                    {"name": "Pantheon" + " " + _("(default)"), "value": "Pantheon"}]}},
             {"screen_blanking": {
                 "section": "main", "name": _("Screen Power Off Time"), "type": "dropdown",
                 "value": "3600", "callback": screen.set_screenblanking_timeout, "options": [
