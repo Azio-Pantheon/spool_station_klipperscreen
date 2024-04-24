@@ -41,7 +41,7 @@ button {
 }
 
 button:active {
-    background-color: @pantheon-new-mint;
+    background-color: @pantheon-mint;
 }
 
 button.color1:active,
