@@ -15,11 +15,10 @@
 @define-color pantheon-green #859900;
 @define-color Pantheon-button-grey #272627;
 @define-color Pantheon-background-grey #1a191a;
-@define-color pantheon-mint-corrected #66BE8E;
 @define-color pantheon-beige-corrected #c0a88c;
 
 
-@define-color pantheon-new-mint #66BE8E;
+@define-color pantheon-mint #66BE8E;
 @define-color pantheon-violet #b894c4;
 @define-color pantheon-peach #f0d3b0;
 @define-color pantheon-pink #f69894;
@@ -53,7 +52,7 @@ button.update:active,
 button.invalid:active,
 .dialog button:active {
     border-style: none;
-    background-color: @pantheon-mint-corrected;
+    background-color: @pantheon-mint;
     margin-top: .5em;
 }
 
