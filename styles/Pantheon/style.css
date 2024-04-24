@@ -17,7 +17,6 @@
 @define-color Pantheon-background-grey #1a191a;
 @define-color pantheon-beige-corrected #c0a88c;
 
-
 @define-color pantheon-mint #66BE8E;
 @define-color pantheon-violet #b894c4;
 @define-color pantheon-peach #f0d3b0;
@@ -89,7 +88,7 @@ button.color4 {
 }
 
 button.print {
-    border-bottom-color: @pantheon-new-mint;
+    border-bottom-color: @pantheon-mint;
 }
 
 button.active {
