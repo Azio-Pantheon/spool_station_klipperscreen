@@ -63,6 +63,20 @@ button.invalid:active,
     background-color: @pantheon-button-grey;
 }
 
+.button_fake {
+
+    background-color: @pantheon-background-grey;
+
+}
+
+.button_fake:insensitive {
+    border: 2px solid @pantheon-grey;
+
+    background-color: @pantheon-background-grey;
+
+    opacity: 1
+}
+
 button.color1 {
     background-color: @pantheon-button-grey;
     border-bottom-color: @pantheon-button-grey;
