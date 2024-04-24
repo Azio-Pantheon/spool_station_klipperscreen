@@ -11,28 +11,21 @@
 @define-color pantheon-orange #cb4b16;
 @define-color pantheon-red #dc322f;
 @define-color pantheon-magenta #d33682;
-@define-color pantheon-violet #6c71c4;
-@define-color pantheon-blue #268bd2;
 @define-color pantheon-cyan #2aa198;
 @define-color pantheon-green #859900;
-
-@define-color pantheon-grey #414042;
 @define-color Pantheon-button-grey #272627;
 @define-color Pantheon-background-grey #1a191a;
-
 @define-color pantheon-mint-corrected #66BE8E;
 @define-color pantheon-beige-corrected #c0a88c;
 
 
-/*  New Theme
-*/
 @define-color pantheon-new-mint #66BE8E;
-@define-color pantheon-new-violet #b894c4;
-@define-color pantheon-new-peach #f0d3b0;
-@define-color pantheon-new-pink #f69894;
-@define-color pantheon-new-blue #4f4c81;
-@define-color pantheon-new-yellow #fff3b5;
-@define-color pantheon-new-grey #414042;
+@define-color pantheon-violet #b894c4;
+@define-color pantheon-peach #f0d3b0;
+@define-color pantheon-pink #f69894;
+@define-color pantheon-blue #4f4c81;
+@define-color pantheon-yellow #fff3b5;
+@define-color pantheon-grey #414042;
 
 * {
     color: @pantheon-off-white;
