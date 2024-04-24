@@ -133,12 +133,14 @@ class Panel(MenuPanel):
         name.get_style_context().add_class(class_name)
 
         visible = self._config.get_config().getboolean(f"graph {self._screen.connected_printer}", device, fallback=True)
-        if visible:
-            name.get_style_context().add_class("graph_label")
+
         self.labels['da'].set_showing(device, visible)
 
         temp = self._gtk.Button(label="", lines=1)
-        #temp.style_set(f"color{5}")
+
+        if visible:
+            name.get_style_context().add_class("graph_label")
+        
 
         if can_target:
             temp = self._gtk.Button(label="", lines=1,style=f"color{4}")

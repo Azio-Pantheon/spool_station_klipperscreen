@@ -23,6 +23,17 @@
 @define-color pantheon-mint-corrected #66BE8E;
 @define-color pantheon-beige-corrected #c0a88c;
 
+
+/*  New Theme
+*/
+@define-color pantheon-new-mint #66BE8E;
+@define-color pantheon-new-violet #b894c4;
+@define-color pantheon-new-peach #f0d3b0;
+@define-color pantheon-new-pink #f69894;
+@define-color pantheon-new-blue #4f4c81;
+@define-color pantheon-new-yellow #fff3b5;
+@define-color pantheon-new-grey #414042;
+
 * {
     color: @pantheon-off-white;
 }
@@ -38,38 +49,7 @@ button {
 }
 
 button:active {
-    background-color: @pantheon-mint-corrected;
-}
-
-.button_active {
-    border-color: @Pantheon-button-grey;
-    border-style: solid;
-    border-radius: 0.25em;
-    background-color: @Pantheon-button-grey;
-}
-
-button.color1 {
-    background-color: @Pantheon-button-grey;
-    border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 0.25em;
-}
-
-button.color2 {
-    background-color: @Pantheon-button-grey;
-    border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 0.25em;
-}
-
-button.color3 {
-    background-color: @Pantheon-button-grey;
-    border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 0.25em;
-}
-
-button.color4 {
-    background-color: @Pantheon-button-grey;
-    border-bottom-color: @pantheon-mint-corrected;
-    border-radius: 0.25em;
+    background-color: @pantheon-new-mint;
 }
 
 button.color1:active,
@@ -82,6 +62,42 @@ button.invalid:active,
     border-style: none;
     background-color: @pantheon-mint-corrected;
     margin-top: .5em;
+}
+
+
+.button_active {
+    border-color: @Pantheon-button-grey;
+    border-style: solid;
+    border-radius: 0.25em;
+    background-color: @Pantheon-button-grey;
+}
+
+button.color1 {
+    background-color: @Pantheon-button-grey;
+    border-bottom-color: @Pantheon-background-grey;
+    border-radius: 0.25em;
+}
+
+button.color2 {
+    background-color: @Pantheon-button-grey;
+    border-bottom-color: @Pantheon-background-grey;
+    border-radius: 0.25em;
+}
+
+button.color3 {
+    background-color: @Pantheon-button-grey;
+    border-bottom-color: @Pantheon-background-grey;
+    border-radius: 0.25em;
+}
+
+button.color4 {
+    background-color: @Pantheon-button-grey;
+    border-bottom-color: @Pantheon-background-grey;
+    border-radius: 0.25em;
+}
+
+button.print {
+    border-bottom-color: @pantheon-new-mint;
 }
 
 button.active {
