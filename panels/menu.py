@@ -55,9 +55,12 @@ class Panel(ScreenPanel):
             style = self._screen.env.from_string(item['style']).render(self.j2_data) if item['style'] else None
 
             b = self._gtk.Button(icon, name, style or f"color{i % 4 + 1}", scale=scale)
+            if (name == "Print"):
+                b.get_style_context().add_class('print')
 
             if item['panel']:
                 b.connect("clicked", self.menu_item_clicked, item)
+                True
             elif item['method']:
                 params = {}
 

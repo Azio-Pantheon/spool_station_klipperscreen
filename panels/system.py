@@ -204,6 +204,7 @@ class Panel(ScreenPanel):
                                          {'application': {program}, 'message': msg, 'complete': False})
         logging.info(f"Sending machine.update.recover name: {program} hard: {hard}")
         self._screen._ws.send_method("machine.update.recover", {"name": program, "hard": hard})
+        self.create_info_grid(self)
 
     def update_program(self, widget, program):
         if self._screen.updating or not self.update_status:
