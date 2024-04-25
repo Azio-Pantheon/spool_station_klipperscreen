@@ -116,6 +116,13 @@ class KlippyGtk:
             return Gtk.Image()
         pixbuf = self.PixbufFromIcon(image_name, width, height)
         return Gtk.Image.new_from_pixbuf(pixbuf) if pixbuf is not None else Gtk.Image()
+    
+    def DeviceImage(self, image_name=None, scale=None):
+        width = height = self.img_scale * scale
+        if image_name is None:
+            return Gtk.Image()
+        pixbuf = self.PixbufFromIcon(image_name, width, height)
+        return Gtk.Image.new_from_pixbuf(pixbuf) if pixbuf is not None else Gtk.Image()
 
     def PixbufFromIcon(self, filename, width=None, height=None):
         width = width if width is not None else self.img_width

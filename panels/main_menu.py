@@ -132,18 +132,37 @@ class Panel(MenuPanel):
         name.set_alignment(0, .5)
         name.get_style_context().add_class(class_name)
 
+        #making devices not buttons and just labels
+        hbox = Gtk.Box(spacing=10)
+
+        # Create an image widget
+        image_widget = self._gtk.DeviceImage(image,self.bts)
+        image_widget.set_margin_start(10)  
+
+        # Create a label
+        label = Gtk.Label(label=self.prettify(devname))
+
+        # Pack the image and label into the box
+        hbox.pack_start(image_widget, False, False, 0)
+        hbox.pack_start(label, False, False, 0)
+        hbox.get_style_context().add_class(class_name)
+        hbox.set_border_width(3)
+        hbox.set_size_request(300, -1)
+        name = hbox
+
         visible = self._config.get_config().getboolean(f"graph {self._screen.connected_printer}", device, fallback=True)
 
         self.labels['da'].set_showing(device, visible)
 
         temp = self._gtk.Button(label="", lines=1)
-
+        temp.set_sensitive(False)
         if visible:
             name.get_style_context().add_class("graph_label")
         
 
         if can_target:
             temp = self._gtk.Button(label="", lines=1,style=f"color{4}")
+            temp.set_sensitive(True)
             temp.connect("clicked", self.show_numpad, device)
 
         self.devices[device] = {
