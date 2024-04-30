@@ -691,7 +691,23 @@ class KlipperScreen(Gtk.Window):
         self.base_panel.show_heaters(False)
         self.show_panel("printer_select", _("Printer Select"), remove_all=True)
 
-    def websocket_disconnected(self, msg):
+    def websocket_connection_cancel(self):
+        self.printer_initializing(
+            _("Cannot connect to Moonraker") + '\n\n'
+            + f'{self.apiclient.status}'
+        )
+
+    def websocket_connected(self):
+        logging.debug("### websocket_connected")
+        self._ws.klippy.identify_client(functions.get_software_version(), self._ws.api_key)
+        self.reinit_count = 0
+        self.connecting = False
+        self.connected_printer = self.connecting_to_printer
+        self.base_panel.set_ks_printer_cfg(self.connected_printer)
+        self.init_moonraker_components()
+        self.init_klipper()
+
+    def websocket_disconnected(self):
         logging.debug("### websocket_disconnected")
         self.printer_initializing(msg, remove=True)
         self.printer.state = "disconnected"
