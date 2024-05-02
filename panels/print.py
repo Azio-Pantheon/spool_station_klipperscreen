@@ -1,6 +1,7 @@
 import logging
 import os
 import gi
+import subprocess
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Pango
@@ -57,6 +58,12 @@ class Panel(ScreenPanel):
         self.refresh.connect('clicked', self._refresh_files)
         n += 1
         self.headerbox.add(self.refresh)
+
+        self.pullusb = self._gtk.Button("refresh", style="red", scale=self.bts)
+        self.pullusb.get_style_context().add_class("buttons_slim")
+        self.pullusb.connect('clicked', self._pull_gcodes_from_usb)
+        n += 1
+        self.headerbox.add(self.pullusb)
 
         self.switch_mode = self._gtk.Button("fine-tune", style=f"color{n % 4 + 1}", scale=self.bts)
         self.switch_mode.get_style_context().add_class("buttons_slim")
@@ -406,6 +413,11 @@ class Panel(ScreenPanel):
         for child in self.flowbox.get_children():
             self.flowbox.remove(child)
         self._screen._ws.klippy.get_dir_info(self.load_files, self.cur_directory)
+
+    def _pull_gcodes_from_usb(self, *args):
+        subprocess.run(['/home/hs3/hs3-data/utilities/usb_mount.sh'], check=True)
+        self._refresh_files()
+
 
     def set_loading(self, loading):
         self.loading = loading
