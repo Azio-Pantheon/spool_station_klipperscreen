@@ -59,7 +59,7 @@ class Panel(ScreenPanel):
         n += 1
         self.headerbox.add(self.refresh)
 
-        self.pullusb = self._gtk.Button("Artboard 1", style=f"color{n % 4 + 1}", scale=self.bts*2)
+        self.pullusb = self._gtk.Button("usb download", style=f"color{n % 4 + 1}", scale=self.bts*2)
         self.pullusb.get_style_context().add_class("buttons_slim")
         self.pullusb.connect('clicked', self._pull_gcodes_from_usb)
         n += 1
@@ -441,7 +441,7 @@ class Panel(ScreenPanel):
                         self._screen.show_popup_message(f"{line}\n***Please wait for the thumbnail(s) to load before printing.***\n***Loading may take couple minutes depending on the file sizes***\n***DO NOT re-upload while the files are loading***", 1)
         except Exception as e:
             self._screen.show_popup_message(f"Failed to run script: {str(e)}")
-            
+
         self._gtk.Button_busy(self.pullusb, False)
         for control in ('back', 'home'):
             self._screen.base_panel.set_control_sensitive(True, control=control) 
