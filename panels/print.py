@@ -415,10 +415,9 @@ class Panel(ScreenPanel):
         self._screen._ws.klippy.get_dir_info(self.load_files, self.cur_directory)
 
     def _pull_gcodes_from_usb(self, widget=None):
-        #self._screen.show_popup_message("Copying .gcode from usb drive", 1)
         thread = threading.Thread(target=self.run_usb_script)
         thread.start()
-        self._refresh_files()
+
 
     def run_usb_script(self, widget=None):   
         self._gtk.Button_busy(self.pullusb, True)
@@ -438,7 +437,7 @@ class Panel(ScreenPanel):
             else:  
                 for line in result.stdout.splitlines():
                     if "number of files copied:" in line:
-                        self._screen.show_popup_message(f"{line}\n***Please wait for the thumbnail(s) to load before printing.***\n***Loading may take couple minutes depending on the file sizes***\n***DO NOT re-upload while the files are loading***", 1)
+                        self._screen.show_popup_message(f"{line}\n***Please wait for the thumbnail(s) to load before printing.***\n***Loading may take couple minutes depending on the file sizes***", 1)
         except Exception as e:
             self._screen.show_popup_message(f"Failed to run script: {str(e)}")
 
