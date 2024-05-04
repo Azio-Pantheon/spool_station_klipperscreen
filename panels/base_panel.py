@@ -257,8 +257,8 @@ class BasePanel(ScreenPanel):
         if action != "notify_status_update" or self._screen.printer is None:
             return
         for device in self._printer.get_temp_devices():
-            temp = self._printer.get_dev_stat(device, "temperature")
-            if temp is not None and device in self.labels:
+            temp = self._printer.get_stat(device, "temperature")
+            if temp and device in self.labels:
                 name = ""
                 if not (device.startswith("extruder") or device.startswith("heater_bed")):
                     if self.titlebar_name_type == "full":
