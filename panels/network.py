@@ -6,6 +6,7 @@ import netifaces
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, GLib, Pango
 from ks_includes.screen_panel import ScreenPanel
+from contextlib import suppress
 
 
 class Panel(ScreenPanel):
@@ -187,7 +188,8 @@ class Panel(ScreenPanel):
 
     def add_new_network(self, widget, ssid):
         self._screen.remove_keyboard()
-        result = self.wifi.add_network(ssid, self.labels['network_psk'].get_text())
+        result = None
+        with suppress(TypeError): result = self.wifi.add_network(ssid, self.labels['network_psk'].get_text())
         self.close_add_network()
         if result:
             self.connect_network(widget, ssid, False)
