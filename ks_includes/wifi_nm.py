@@ -269,3 +269,4 @@ class WifiManager:
             self.wifi_dev.RequestScan({})
         except dbus.exceptions.DBusException as e:
             logging.error(f"Error during rescan {e}")
+
