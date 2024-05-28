@@ -1,6 +1,9 @@
 import logging
 import os
 import gi
+import yaml
+import difflib
+
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Pango
@@ -39,7 +42,7 @@ class Panel(ScreenPanel):
         self.loading = False
         self.cur_directory = 'gcodes'
         self.list_button_size = self._gtk.img_scale * self.bts
-
+        self.file_metadata = {}
         self.headerbox = Gtk.Box(hexpand=True, vexpand=False)
         n = 0
         for name, val in self.sort_items.items():
@@ -163,12 +166,12 @@ class Panel(ScreenPanel):
             row.attach(rename, 2, 1, 1, 1)
             row.attach(delete, 3, 1, 1, 1)
             if 'filename' in item:
-                icon.connect("clicked", self.confirm_print, path)
+                icon.connect("clicked", self.confirm_compatible_print, path)
                 image_args = (path, icon, self.thumbsize, False, "file")
                 delete.connect("clicked", self.confirm_delete_file, f"gcodes/{path}")
                 rename.connect("clicked", self.show_rename, f"gcodes/{path}")
                 action = self._gtk.Button("print", style="color3")
-                action.connect("clicked", self.confirm_print, path)
+                action.connect("clicked", self.confirm_compatible_print, path)
                 action.set_hexpand(False)
                 action.set_vexpand(False)
                 action.set_halign(Gtk.Align.END)
@@ -190,7 +193,7 @@ class Panel(ScreenPanel):
         else:  # Thumbnail view
             icon = self._gtk.Button(label=basename)
             if 'filename' in item:
-                icon.connect("clicked", self.confirm_print, path)
+                icon.connect("clicked", self.confirm_compatible_print, path)
                 image_args = (path, icon, self.thumbsize, False, "file")
             elif 'dirname' in item:
                 icon.connect("clicked", self.change_dir, path)
@@ -326,6 +329,116 @@ class Panel(ScreenPanel):
         self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
 
     def confirm_print_response(self, dialog, response_id, filename):
+        self._gtk.remove_dialog(dialog)
+        if response_id == Gtk.ResponseType.OK:
+            logging.info(f"Starting print: {filename}")
+            self._screen._ws.klippy.print_start(filename)
+
+    def confirm_compatible_print(self, widget, filename):
+
+        buttons = []
+
+        #Load yml config from printer hardware side 
+        try:
+            with open('/home/hs3/hs3-data/config/sample-config.yml', 'r') as file:
+                data = yaml.safe_load(file)
+        except yaml.YAMLError as e:
+            print(f"Error loading YAML configuration file: {e}")
+            data = None
+
+        #Load the yml config from gcode
+        self.file_metadata = self._files.get_file_info(filename)
+        label_text = ""
+        label_class = ""
+
+        if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
+            # Scenario 1: config_yml doesn't exist
+            label_text = "<b>Warning: this gcode appears to be generated from a third-party slicer</b>\n<b>There is a high chance of causing machine damage.</b>\n<b>Proceed with the print may void the warranty.</b>"
+            label_class = 'compatibility-warn'
+            buttons = [
+                {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
+                {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
+            ]
+        else:
+            # Scenario 2: config_yml exists
+            gcode_yml = self.file_metadata['config_yml'].replace('---', '').replace('...', '').replace(';', '\n')
+            
+            try:
+                gcode_yml = yaml.safe_load(gcode_yml)
+            except yaml.YAMLError as e:
+                print(f"Error loading YAML configuration file: {e}")
+                gcode_yml = None
+
+            if gcode_yml == data:
+                label_text = f"<b>filename</b>\n"
+                buttons = [
+                    {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                ]
+            else:
+                # Scenario 3: config_yml exists, but the configs are different
+                # Find differences between the two YAML files
+                diff_original = yaml.dump(data).splitlines()
+                diff_gcode = yaml.dump(gcode_yml).splitlines()
+
+                label_text = "<b>Differences detected:</b>\n"
+                label_class = 'compatibility-caution'
+                buttons = [
+                    {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                ]
+
+                # Create a grid to display differences side by side
+                grid = Gtk.Grid()
+                grid.set_column_homogeneous(True)
+
+                label_orig = Gtk.Label(label="Printer Configuration")
+                label_gcode = Gtk.Label(label="Gcode Configuration")
+
+                grid.attach(label_orig, 0, 1, 1, 1)
+                grid.attach(label_gcode, 1, 1, 1, 1)
+
+                for i, (orig, gcode) in enumerate(zip(diff_original, diff_gcode)):
+                    label_orig_line = Gtk.Label(label=orig)
+                    label_orig_line.get_style_context().add_class(label_class)
+                    label_gcode_line = Gtk.Label(label=gcode)
+                    label_gcode_line.get_style_context().add_class(label_class)
+                    grid.attach(label_orig_line, 0, i+2, 1, 1)
+                    grid.attach(label_gcode_line, 1, i+2, 1, 1)
+
+        # Create label and add the appropriate style class
+        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        label.set_markup(label_text)
+        if label_class:
+            label.get_style_context().add_class(label_class)
+        # Create a ScrolledWindow and set maximum height
+        scrolled_window = Gtk.ScrolledWindow()
+        scrolled_window.set_hexpand(True)
+        scrolled_window.set_vexpand(True)
+        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled_window.set_max_content_height(300)  # Set the maximum height as needed
+
+        if 'grid' in locals():
+            grid.attach(label, 0, 0, 2, 1)
+            scrolled_window .add(grid)
+        else:
+            scrolled_window .add(label)
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.add(scrolled_window)
+
+        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .20
+        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+        if pixbuf is not None:
+            image = Gtk.Image.new_from_pixbuf(pixbuf)
+            box.add(image)
+
+        dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+        # Adding background color
+        #dialog.get_style_context().add_class('dialog-compatibility-warning')
+
+
+    def confirm_compatible_print_response(self, dialog, response_id, filename):
         self._gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
             logging.info(f"Starting print: {filename}")
