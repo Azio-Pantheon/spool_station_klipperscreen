@@ -361,6 +361,7 @@ class Panel(ScreenPanel):
             ]
         else:
             # Scenario 2: config_yml exists
+            test = self.file_metadata['config_yml']
             gcode_yml = self.file_metadata['config_yml'].replace('---', '').replace('...', '').replace(';', '\n')
             
             try:
@@ -398,13 +399,20 @@ class Panel(ScreenPanel):
                 grid.attach(label_orig, 0, 1, 1, 1)
                 grid.attach(label_gcode, 1, 1, 1, 1)
 
-                for i, (orig, gcode) in enumerate(zip(diff_original, diff_gcode)):
-                    label_orig_line = Gtk.Label(label=orig)
-                    label_orig_line.get_style_context().add_class(label_class)
-                    label_gcode_line = Gtk.Label(label=gcode)
-                    label_gcode_line.get_style_context().add_class(label_class)
-                    grid.attach(label_orig_line, 0, i+2, 1, 1)
-                    grid.attach(label_gcode_line, 1, i+2, 1, 1)
+                # Create TextView widgets to display the YAML content
+                orig_textview = Gtk.TextView()
+                orig_buffer = orig_textview.get_buffer()
+                orig_buffer.set_text("\n".join(diff_original))
+                orig_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+
+                gcode_textview = Gtk.TextView()
+                gcode_buffer = gcode_textview.get_buffer()
+                gcode_buffer.set_text("\n".join(diff_gcode))
+                gcode_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+
+                # Add TextView widgets to the grid
+                grid.attach(orig_textview, 0, 2, 1, 1)
+                grid.attach(gcode_textview, 1, 2, 1, 1)
 
         # Create label and add the appropriate style class
         label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
