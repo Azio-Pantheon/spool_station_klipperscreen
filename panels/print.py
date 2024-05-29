@@ -401,11 +401,13 @@ class Panel(ScreenPanel):
 
                 # Create TextView widgets to display the YAML content
                 orig_textview = Gtk.TextView()
+                orig_textview.set_editable(False)
                 orig_buffer = orig_textview.get_buffer()
                 orig_buffer.set_text("\n".join(diff_original))
                 orig_textview.set_wrap_mode(Gtk.WrapMode.WORD)
 
                 gcode_textview = Gtk.TextView()
+                gcode_textview.set_editable(False)
                 gcode_buffer = gcode_textview.get_buffer()
                 gcode_buffer.set_text("\n".join(diff_gcode))
                 gcode_textview.set_wrap_mode(Gtk.WrapMode.WORD)
