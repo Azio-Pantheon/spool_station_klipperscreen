@@ -12,6 +12,8 @@ from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
 from ks_includes.widgets.flowboxchild_extended import PrintListItem
 
+printer_config_file_path = '/home/hs3/hs3-data/config/sample-config.yml'
+
 
 def format_label(widget):
     label = find_widget(widget, Gtk.Label)
@@ -335,117 +337,173 @@ class Panel(ScreenPanel):
             self._screen._ws.klippy.print_start(filename)
 
     def confirm_compatible_print(self, widget, filename):
+        # if printer config doesnt exist, then skip all config checks
+        if os.path.exists(printer_config_file_path):
+            #Load the yml config from gcode
+            self.file_metadata = self._files.get_file_info(filename)
+            label_text = ""
+            label_class = ""
 
-        buttons = []
+            # if the slicer is not PantheonSlicer then show a warning
+            if (self.file_metadata['slicer'] == 'PantheonSlicer'):
+                buttons = []
+                #Load yml config from printer hardware side 
+                try:
+                    with open(printer_config_file_path, 'r') as file:
+                        data = yaml.safe_load(file)
+                except yaml.YAMLError as e:
+                    print(f"Error loading YAML configuration file: {e}")
+                    data = None
 
-        #Load yml config from printer hardware side 
-        try:
-            with open('/home/hs3/hs3-data/config/sample-config.yml', 'r') as file:
-                data = yaml.safe_load(file)
-        except yaml.YAMLError as e:
-            print(f"Error loading YAML configuration file: {e}")
-            data = None
 
-        #Load the yml config from gcode
-        self.file_metadata = self._files.get_file_info(filename)
-        label_text = ""
-        label_class = ""
+                if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
+                    # Scenario 1: config_yml doesn't exist for pantheonslicer
+                    label_text = "<b>Caution: Out of date PantheonSlicer Detected</b>\n<b>Updating to the newest version of pantheonslicer and profiles is highly recommended</b>"
+                    label_class = 'compatibility-caution'
+                    buttons = [
+                        {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
+                        {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
+                    ]
+                else:
+                    # Scenario 2: config_yml exists
+                    test = self.file_metadata['config_yml']
+                    gcode_yml = self.file_metadata['config_yml'].replace('---', '').replace('...', '').replace(';', '\n')
+                    
+                    try:
+                        gcode_yml = yaml.safe_load(gcode_yml)
+                    except yaml.YAMLError as e:
+                        print(f"Error loading YAML configuration file: {e}")
+                        gcode_yml = None
 
-        if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
-            # Scenario 1: config_yml doesn't exist
-            label_text = "<b>Warning: this gcode appears to be generated from a third-party slicer</b>\n<b>There is a high chance of causing machine damage.</b>\n<b>Proceed with the print may void the warranty.</b>"
-            label_class = 'compatibility-warn'
-            buttons = [
-                {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
-                {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
-            ]
-        else:
-            # Scenario 2: config_yml exists
-            test = self.file_metadata['config_yml']
-            gcode_yml = self.file_metadata['config_yml'].replace('---', '').replace('...', '').replace(';', '\n')
-            
-            try:
-                gcode_yml = yaml.safe_load(gcode_yml)
-            except yaml.YAMLError as e:
-                print(f"Error loading YAML configuration file: {e}")
-                gcode_yml = None
+                    if gcode_yml == data:
+                        label_text = f"<b>filename</b>\n"
+                        buttons = [
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
+                    else:
+                        # Scenario 3: config_yml exists, but the configs are different
+                        # Find differences between the two YAML files
+                        diff_original = yaml.dump(data).splitlines()
+                        diff_gcode = yaml.dump(gcode_yml).splitlines()
 
-            if gcode_yml == data:
-                label_text = f"<b>filename</b>\n"
-                buttons = [
-                    {"name": _("Print"), "response": Gtk.ResponseType.OK},
-                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
-                ]
+                        label_text = "<b>Differences detected:</b>\n"
+                        label_class = 'compatibility-caution'
+                        buttons = [
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
+
+                        # Create a grid to display differences side by side
+                        grid = Gtk.Grid()
+                        grid.set_column_homogeneous(True)
+
+                        label_orig = Gtk.Label(label="Printer Configuration")
+                        label_gcode = Gtk.Label(label="Gcode Configuration")
+
+                        grid.attach(label_orig, 0, 1, 1, 1)
+                        grid.attach(label_gcode, 1, 1, 1, 1)
+
+                        # Create TextView widgets to display the YAML content
+                        orig_textview = Gtk.TextView()
+                        orig_textview.set_editable(False)
+                        orig_buffer = orig_textview.get_buffer()
+                        orig_buffer.set_text("\n".join(diff_original))
+                        orig_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+
+                        gcode_textview = Gtk.TextView()
+                        gcode_textview.set_editable(False)
+                        gcode_buffer = gcode_textview.get_buffer()
+                        gcode_buffer.set_text("\n".join(diff_gcode))
+                        gcode_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+
+                        # Add TextView widgets to the grid
+                        grid.attach(orig_textview, 0, 2, 1, 1)
+                        grid.attach(gcode_textview, 1, 2, 1, 1)
+
+                # Create label and add the appropriate style class
+                label = Gtk.Label(label=label_text)
+                if label_class:
+                    label.get_style_context().add_class(label_class)
+                # Create a ScrolledWindow and set maximum height
+                scrolled_window = Gtk.ScrolledWindow()
+                scrolled_window.set_hexpand(True)
+                scrolled_window.set_vexpand(True)
+                scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+                scrolled_window.set_max_content_height(300)  # Set the maximum height as needed
+
+                if 'grid' in locals():
+                    grid.attach(label, 0, 0, 2, 1)
+                    scrolled_window.add(grid)
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                box.add(scrolled_window)
+
+
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .20
+                pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                if pixbuf is not None:
+                    image = Gtk.Image.new_from_pixbuf(pixbuf)
+                    box.add(image)
+
+
+                dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                # Adding background color
+                #dialog.get_style_context().add_class('dialog-compatibility-warning')
             else:
-                # Scenario 3: config_yml exists, but the configs are different
-                # Find differences between the two YAML files
-                diff_original = yaml.dump(data).splitlines()
-                diff_gcode = yaml.dump(gcode_yml).splitlines()
-
-                label_text = "<b>Differences detected:</b>\n"
-                label_class = 'compatibility-caution'
+                # Scenario: config_yml doesn't exist
+                label_text = f"<b>Warning: this gcode appears to be generated from a third-party slicer:({self.file_metadata['slicer']})</b>\n<b>There is a high chance of causing machine damage.</b>\n<b>Proceed with the print may void the warranty.</b>"
+                label_class = 'compatibility-warn'
                 buttons = [
-                    {"name": _("Print"), "response": Gtk.ResponseType.OK},
-                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                    {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
+                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
                 ]
+                # Create label and add the appropriate style class
+                label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+                label.set_markup(label_text)
+                if label_class:
+                    label.get_style_context().add_class(label_class)
+                # Create a ScrolledWindow and set maximum height
+                scrolled_window = Gtk.ScrolledWindow()
+                scrolled_window.set_hexpand(True)
+                scrolled_window.set_vexpand(True)
+                scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+                scrolled_window.set_max_content_height(300)  # Set the maximum height as needed
 
-                # Create a grid to display differences side by side
-                grid = Gtk.Grid()
-                grid.set_column_homogeneous(True)
+                if 'grid' in locals():
+                    grid.attach(label, 0, 0, 2, 1)
+                    scrolled_window .add(grid)
+                else:
+                    scrolled_window .add(label)
 
-                label_orig = Gtk.Label(label="Printer Configuration")
-                label_gcode = Gtk.Label(label="Gcode Configuration")
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                box.add(scrolled_window)
 
-                grid.attach(label_orig, 0, 1, 1, 1)
-                grid.attach(label_gcode, 1, 1, 1, 1)
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .20
+                pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                if pixbuf is not None:
+                    image = Gtk.Image.new_from_pixbuf(pixbuf)
+                    box.add(image)
 
-                # Create TextView widgets to display the YAML content
-                orig_textview = Gtk.TextView()
-                orig_textview.set_editable(False)
-                orig_buffer = orig_textview.get_buffer()
-                orig_buffer.set_text("\n".join(diff_original))
-                orig_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-
-                gcode_textview = Gtk.TextView()
-                gcode_textview.set_editable(False)
-                gcode_buffer = gcode_textview.get_buffer()
-                gcode_buffer.set_text("\n".join(diff_gcode))
-                gcode_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-
-                # Add TextView widgets to the grid
-                grid.attach(orig_textview, 0, 2, 1, 1)
-                grid.attach(gcode_textview, 1, 2, 1, 1)
-
-        # Create label and add the appropriate style class
-        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
-        label.set_markup(label_text)
-        if label_class:
-            label.get_style_context().add_class(label_class)
-        # Create a ScrolledWindow and set maximum height
-        scrolled_window = Gtk.ScrolledWindow()
-        scrolled_window.set_hexpand(True)
-        scrolled_window.set_vexpand(True)
-        scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        scrolled_window.set_max_content_height(300)  # Set the maximum height as needed
-
-        if 'grid' in locals():
-            grid.attach(label, 0, 0, 2, 1)
-            scrolled_window .add(grid)
+                dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
         else:
-            scrolled_window .add(label)
+            buttons = [
+                {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+            ]
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        box.add(scrolled_window)
+            label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+            label.set_markup(f"<b>{filename}</b>\n")
 
-        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .20
-        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
-        if pixbuf is not None:
-            image = Gtk.Image.new_from_pixbuf(pixbuf)
-            box.add(image)
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            box.add(label)
 
-        dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
-        # Adding background color
-        #dialog.get_style_context().add_class('dialog-compatibility-warning')
+            height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+            pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+            if pixbuf is not None:
+                image = Gtk.Image.new_from_pixbuf(pixbuf)
+                box.add(image)
+
+            self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
 
 
     def confirm_compatible_print_response(self, dialog, response_id, filename):
