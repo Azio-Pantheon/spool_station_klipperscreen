@@ -358,7 +358,7 @@ class Panel(ScreenPanel):
 
                 if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
                     # Scenario 1: config_yml doesn't exist for pantheonslicer
-                    label_text = "<b>Caution: Out of date PantheonSlicer Detected</b>\n<b>Updating to the newest version of pantheonslicer and profiles is highly recommended</b>"
+                    label_text = "Caution: Out of date PantheonSlicer Detected\nUpdating to the newest version of pantheonslicer and profiles is highly recommended"
                     label_class = 'compatibility-caution'
                     buttons = [
                         {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
@@ -376,7 +376,7 @@ class Panel(ScreenPanel):
                         gcode_yml = None
 
                     if gcode_yml == data:
-                        label_text = f"<b>filename</b>\n"
+                        label_text = f"filename\n"
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
@@ -435,6 +435,8 @@ class Panel(ScreenPanel):
                 if 'grid' in locals():
                     grid.attach(label, 0, 0, 2, 1)
                     scrolled_window.add(grid)
+                else:
+                    scrolled_window .add(label)
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                 box.add(scrolled_window)
 
