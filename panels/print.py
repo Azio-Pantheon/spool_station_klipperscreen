@@ -387,7 +387,7 @@ class Panel(ScreenPanel):
                         diff_original = yaml.dump(data).splitlines()
                         diff_gcode = yaml.dump(gcode_yml).splitlines()
 
-                        label_text = "<b>Differences detected:</b>\n"
+                        label_text = "Differences detected:"
                         label_class = 'compatibility-caution'
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
