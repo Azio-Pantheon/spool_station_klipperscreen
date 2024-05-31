@@ -3,6 +3,9 @@ import os
 import gi
 import yaml
 import difflib
+from io import StringIO
+from jsonschema import validate, ValidationError
+import time
 
 
 gi.require_version("Gtk", "3.0")
@@ -12,7 +15,9 @@ from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
 from ks_includes.widgets.flowboxchild_extended import PrintListItem
 
-printer_config_file_path = '/home/hs3/hs3-data/config/sample-config.yml'
+printer_config_file_path = '/home/hs3/printer_data/config/printer-config.yml'
+printer_config__schema_file_path = '/home/hs3/printer_data/config/processor/printer-config-schema.json'
+
 
 
 def format_label(widget):
@@ -98,6 +103,11 @@ class Panel(ScreenPanel):
         self.content.add(self.main)
         self.set_loading(True)
         self._screen._ws.klippy.get_dir_info(self.load_files, self.cur_directory)
+        with open(printer_config__schema_file_path, 'r') as file:
+            self.schema_data = yaml.safe_load(file)  
+        with open(printer_config_file_path, 'r') as file:
+            self.config_data = yaml.safe_load(file)  
+
 
     def switch_view_mode(self, widget):
         self.list_mode ^= True
@@ -366,23 +376,45 @@ class Panel(ScreenPanel):
                     ]
                 else:
                     # Scenario 2: config_yml exists
-                    test = self.file_metadata['config_yml']
-                    gcode_yml = self.file_metadata['config_yml'].replace('---', '').replace('...', '').replace(';', '\n')
+                    gcode_yml_temp = self.file_metadata['config_yml'].replace('---', '').replace('...', '').replace(';', '\n')
                     
                     try:
-                        gcode_yml = yaml.safe_load(gcode_yml)
+                        gcode_yml = yaml.safe_load(gcode_yml_temp)
                     except yaml.YAMLError as e:
-                        print(f"Error loading YAML configuration file: {e}")
-                        gcode_yml = None
+                    # Scenario 3:gcode_yml contains invalid content
+                        buttons = [
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
 
-                    if gcode_yml == data:
-                        label_text = f"filename\n"
+                        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+                        label.set_markup(f"<b>'Invalid Gcode yml config found'</b>\n")
+                        label_class = 'compatibility-warning'
+                        label.get_style_context().add_class(label_class)
+                        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                        box.add(label)
+
+                        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+                        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                        if pixbuf is not None:
+                            image = Gtk.Image.new_from_pixbuf(pixbuf)
+                            box.add(image)
+
+                        self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
+                        return
+                    try:
+                        checks_passed, output = self.check_config(self.schema_data, self.config_data, gcode_yml_temp)
+                    except Exception as e:
+                        print(e)
+
+                    if (checks_passed):
+                        label_text = f"{filename}\n"
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
                         ]
                     else:
-                        # Scenario 3: config_yml exists, but the configs are different
+                        # Scenario 4: config_yml exists, but the configs are different
                         # Find differences between the two YAML files
                         diff_original = yaml.dump(data).splitlines()
                         diff_gcode = yaml.dump(gcode_yml).splitlines()
@@ -441,7 +473,7 @@ class Panel(ScreenPanel):
                 box.add(scrolled_window)
 
 
-                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .20
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .50
                 pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
                 if pixbuf is not None:
                     image = Gtk.Image.new_from_pixbuf(pixbuf)
@@ -452,7 +484,7 @@ class Panel(ScreenPanel):
                 # Adding background color
                 #dialog.get_style_context().add_class('dialog-compatibility-warning')
             else:
-                # Scenario: config_yml doesn't exist
+                # Scenario 5: config_yml doesn't exist
                 label_text = f"<b>Warning: this gcode appears to be generated from a third-party slicer:({self.file_metadata['slicer']})</b>\n<b>There is a high chance of causing machine damage.</b>\n<b>Proceed with the print may void the warranty.</b>"
                 label_class = 'compatibility-warn'
                 buttons = [
@@ -651,3 +683,83 @@ class Panel(ScreenPanel):
             params
         )
         self.back()
+
+
+    def check_config(self, schema, config, header):
+
+        time1 = time.time()
+
+        outputStrings = []
+        def printOutput(*args):
+            output = StringIO()
+            print(*args, file=output, end="")
+            outputStrings.append(output.getvalue())
+
+        timeq = time.time()
+        tq = timeq - time1
+        
+        timew = time.time()
+        tw = timew - timeq
+             
+        header_data = yaml.safe_load(header)
+
+        checks_passed = True
+        
+        time2 = time.time()
+        t1 = time2 - time1
+        te = time2 -timew
+        # Validate that the header and config both match the schema 
+        try:
+            validate(config, schema)
+        except ValidationError as e:
+            printOutput('Warning! Printer Config does not match schema:\n\t','.'.join(e.absolute_path)+':',e.message)
+            checks_passed &= False
+        
+        time0 = time.time()
+        tr = time0-time2
+        try:
+            validate(header_data, schema)
+        except ValidationError as e:
+            printOutput('Warning! GCode Header does not match schema:\n\t','.'.join(e.absolute_path)+':',e.message)
+            checks_passed &= False
+        time3 = time.time()
+        t2 = time3 - time2
+        tt = time3 -time0
+        # Compare processes 
+        printer_process = config['printer']['process']
+        gcode_process = header_data['printer']['process']
+        if gcode_process != printer_process:
+            printOutput('Warning! Process mismatch!\n\tExpected', gcode_process, 'got', printer_process) 
+            checks_passed &= False
+
+        time4=time.time()
+        t3 = time4 - time3
+
+        # Compare axes limits
+        printer_axes_limits = config['printer']['axes-limits']
+        gcode_axes_limits = header_data['printer']['axes-limits']
+        for axis in gcode_axes_limits.keys():
+            if gcode_axes_limits[axis] > printer_axes_limits[axis]:
+                printOutput( 'Caution!', axis.upper(), 'axis is too small!\n\tExpected', gcode_axes_limits[axis], 'mm got',  printer_axes_limits[axis], "mm")
+                checks_passed &= False
+
+        time5=time.time()
+        t4 = time5 - time4
+        # Compare hardware
+        printer_hardware = config['printer']['hardware']
+        gcode_hardware = header_data['printer']['hardware']
+        for key in gcode_hardware.keys():
+            
+            if key not in printer_hardware:
+                printOutput('Caution! No suitable', key, 'found!')
+                checks_passed &= False
+            elif gcode_hardware[key] != 'any':
+                if gcode_hardware[key] != printer_hardware[key]:
+                    printOutput('Caution! Wrong', key, 'found!\n\tExpected', gcode_hardware[key], 'got', printer_hardware[key])
+                    checks_passed &= False
+
+        time6=time.time()
+        t5 = time6 - time5
+        t6 = time6 - time1
+        return checks_passed, outputStrings
+
