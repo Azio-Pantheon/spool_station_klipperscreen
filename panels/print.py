@@ -2,10 +2,8 @@ import logging
 import os
 import gi
 import yaml
-import difflib
 from io import StringIO
-from jsonschema import validate, ValidationError
-import time
+
 
 
 gi.require_version("Gtk", "3.0")
@@ -16,7 +14,7 @@ from ks_includes.KlippyGtk import find_widget
 from ks_includes.widgets.flowboxchild_extended import PrintListItem
 
 printer_config_file_path = '/home/hs3/printer_data/config/printer-config.yml'
-printer_config__schema_file_path = '/home/hs3/printer_data/config/processor/printer-config-schema.json'
+
 
 
 
@@ -103,10 +101,7 @@ class Panel(ScreenPanel):
         self.content.add(self.main)
         self.set_loading(True)
         self._screen._ws.klippy.get_dir_info(self.load_files, self.cur_directory)
-        with open(printer_config__schema_file_path, 'r') as file:
-            self.schema_data = yaml.safe_load(file)  
-        with open(printer_config_file_path, 'r') as file:
-            self.config_data = yaml.safe_load(file)  
+
 
 
     def switch_view_mode(self, widget):
@@ -353,19 +348,9 @@ class Panel(ScreenPanel):
             self.file_metadata = self._files.get_file_info(filename)
             label_text = ""
             label_class = ""
-
             # if the slicer is not PantheonSlicer then show a warning
             if (self.file_metadata['slicer'] == 'PantheonSlicer'):
                 buttons = []
-                #Load yml config from printer hardware side 
-                try:
-                    with open(printer_config_file_path, 'r') as file:
-                        data = yaml.safe_load(file)
-                except yaml.YAMLError as e:
-                    print(f"Error loading YAML configuration file: {e}")
-                    data = None
-
-
                 if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
                     # Scenario 1: config_yml doesn't exist for pantheonslicer
                     label_text = "Caution: Out of date PantheonSlicer Detected\nUpdating to the newest version of pantheonslicer and profiles is highly recommended"
@@ -375,52 +360,57 @@ class Panel(ScreenPanel):
                         {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
                     ]
                 else:
-                    # Scenario 2: config_yml exists
-                    gcode_yml_temp = self.file_metadata['config_yml'].replace('---', '').replace('...', '').replace(';', '\n')
-                    
-                    try:
-                        gcode_yml = yaml.safe_load(gcode_yml_temp)
-                    except yaml.YAMLError as e:
-                    # Scenario 3:gcode_yml contains invalid content
+                    # Scenario: config_yml exists
+                        #Senario 2: config_verifier not found
+                    if ('config_verifier' not in self.file_metadata):
+                        label_text = f"Caution: config_verifier not found\nRe-uploading {filename} is recommended"
+                        label_class = 'compatibility-caution'
                         buttons = [
-                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
-                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
-                        ]
-
-                        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
-                        label.set_markup(f"<b>'Invalid Gcode yml config found'</b>\n")
-                        label_class = 'compatibility-warning'
-                        label.get_style_context().add_class(label_class)
-                        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                        box.add(label)
-
-                        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
-                        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
-                        if pixbuf is not None:
-                            image = Gtk.Image.new_from_pixbuf(pixbuf)
-                            box.add(image)
-
-                        self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
-                        return
-                    try:
-                        checks_passed, output = self.check_config(self.schema_data, self.config_data, gcode_yml_temp)
-                    except Exception as e:
-                        print(e)
-
-                    if (checks_passed):
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
+                        ] 
+                        #Senario 3: Config check passed
+                    elif (self.file_metadata['config_verifier'] == []):
                         label_text = f"{filename}\n"
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
                         ]
+                        #Senario 4: Gcode_yml format is invalid
+                    elif (self.file_metadata['config_verifier'][0] == 'Warning! gcode_yml cannot be loaded: invalid format detected'):
+                        label_text = self.file_metadata['config_verifier'][0]
+                        label_class = 'compatibility-warning'
+                        buttons = [
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
                     else:
-                        # Scenario 4: config_yml exists, but the configs are different
+                        # Scenario 5: config_yml exists, but Config check failed
                         # Find differences between the two YAML files
-                        diff_original = yaml.dump(data).splitlines()
-                        diff_gcode = yaml.dump(gcode_yml).splitlines()
+                        left_message = []
+                        right_message = []
+                        label_classes = []
 
                         label_text = "Differences detected:"
-                        label_class = 'compatibility-caution'
+                        label_class = ''
+
+                        for entry in self.file_metadata['config_verifier']:
+                            if entry.startswith("Warning!"):
+                                sublabel_class = 'compatibility-warning'
+                            elif entry.startswith("Danger!"):
+                                sublabel_class = 'compatibility-danger'
+                            else:
+                                sublabel_class = 'compatibility-caution'
+                            
+                            # Split the entry to separate the error message and the expected message
+                            parts = entry.split("\n\t")
+                            if len(parts) == 2:
+                                error_message = parts[0].strip()
+                                expected_message = parts[1].strip()
+                                left_message.append(error_message)
+                                right_message.append(expected_message)
+                                label_classes.append(sublabel_class)
+
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
@@ -430,28 +420,37 @@ class Panel(ScreenPanel):
                         grid = Gtk.Grid()
                         grid.set_column_homogeneous(True)
 
-                        label_orig = Gtk.Label(label="Printer Configuration")
-                        label_gcode = Gtk.Label(label="Gcode Configuration")
+                        # Create TextView widgets to display the YAML content with appropriate classes
+                        for i in range(len(left_message)):
+                            # Create TextView for original message
+                            orig_textview = Gtk.TextView()
+                            orig_textview.set_editable(False)
+                            orig_buffer = orig_textview.get_buffer()
+                            orig_buffer.set_text(left_message[i])
+                            orig_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+                            orig_textview.get_style_context().add_class(label_classes[i])
 
-                        grid.attach(label_orig, 0, 1, 1, 1)
-                        grid.attach(label_gcode, 1, 1, 1, 1)
+                            # Create TextView for Gcode message
+                            gcode_textview = Gtk.TextView()
+                            gcode_textview.set_editable(False)
+                            gcode_buffer = gcode_textview.get_buffer()
+                            gcode_buffer.set_text(right_message[i])
+                            gcode_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+                            gcode_textview.get_style_context().add_class(label_classes[i])
 
-                        # Create TextView widgets to display the YAML content
+                            # Add TextView widgets to the grid
+                            grid.attach(orig_textview, 0, i + 1, 1, 1)
+                            grid.attach(gcode_textview, 1, i + 1, 1, 1)
+                        #===============================================================
+                        # Not sure why, but this block is needed for the TextViews above to show up 
                         orig_textview = Gtk.TextView()
                         orig_textview.set_editable(False)
                         orig_buffer = orig_textview.get_buffer()
-                        orig_buffer.set_text("\n".join(diff_original))
+                        orig_buffer.set_text("\n".join(['','']))
                         orig_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-
-                        gcode_textview = Gtk.TextView()
-                        gcode_textview.set_editable(False)
-                        gcode_buffer = gcode_textview.get_buffer()
-                        gcode_buffer.set_text("\n".join(diff_gcode))
-                        gcode_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-
-                        # Add TextView widgets to the grid
-                        grid.attach(orig_textview, 0, 2, 1, 1)
-                        grid.attach(gcode_textview, 1, 2, 1, 1)
+                        # # Add TextView widgets to the grid
+                        grid.attach(orig_textview, 0, len(left_message) + 1, 1, 1)
+                        #===============================================================
 
                 # Create label and add the appropriate style class
                 label = Gtk.Label(label=label_text)
@@ -484,9 +483,9 @@ class Panel(ScreenPanel):
                 # Adding background color
                 #dialog.get_style_context().add_class('dialog-compatibility-warning')
             else:
-                # Scenario 5: config_yml doesn't exist
+                # Scenario 6: not PantheonSlicer
                 label_text = f"<b>Warning: this gcode appears to be generated from a third-party slicer:({self.file_metadata['slicer']})</b>\n<b>There is a high chance of causing machine damage.</b>\n<b>Proceed with the print may void the warranty.</b>"
-                label_class = 'compatibility-warn'
+                label_class = 'compatibility-warning'
                 buttons = [
                     {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
                     {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
@@ -684,82 +683,4 @@ class Panel(ScreenPanel):
         )
         self.back()
 
-
-    def check_config(self, schema, config, header):
-
-        time1 = time.time()
-
-        outputStrings = []
-        def printOutput(*args):
-            output = StringIO()
-            print(*args, file=output, end="")
-            outputStrings.append(output.getvalue())
-
-        timeq = time.time()
-        tq = timeq - time1
-        
-        timew = time.time()
-        tw = timew - timeq
-             
-        header_data = yaml.safe_load(header)
-
-        checks_passed = True
-        
-        time2 = time.time()
-        t1 = time2 - time1
-        te = time2 -timew
-        # Validate that the header and config both match the schema 
-        try:
-            validate(config, schema)
-        except ValidationError as e:
-            printOutput('Warning! Printer Config does not match schema:\n\t','.'.join(e.absolute_path)+':',e.message)
-            checks_passed &= False
-        
-        time0 = time.time()
-        tr = time0-time2
-        try:
-            validate(header_data, schema)
-        except ValidationError as e:
-            printOutput('Warning! GCode Header does not match schema:\n\t','.'.join(e.absolute_path)+':',e.message)
-            checks_passed &= False
-        time3 = time.time()
-        t2 = time3 - time2
-        tt = time3 -time0
-        # Compare processes 
-        printer_process = config['printer']['process']
-        gcode_process = header_data['printer']['process']
-        if gcode_process != printer_process:
-            printOutput('Warning! Process mismatch!\n\tExpected', gcode_process, 'got', printer_process) 
-            checks_passed &= False
-
-        time4=time.time()
-        t3 = time4 - time3
-
-        # Compare axes limits
-        printer_axes_limits = config['printer']['axes-limits']
-        gcode_axes_limits = header_data['printer']['axes-limits']
-        for axis in gcode_axes_limits.keys():
-            if gcode_axes_limits[axis] > printer_axes_limits[axis]:
-                printOutput( 'Caution!', axis.upper(), 'axis is too small!\n\tExpected', gcode_axes_limits[axis], 'mm got',  printer_axes_limits[axis], "mm")
-                checks_passed &= False
-
-        time5=time.time()
-        t4 = time5 - time4
-        # Compare hardware
-        printer_hardware = config['printer']['hardware']
-        gcode_hardware = header_data['printer']['hardware']
-        for key in gcode_hardware.keys():
-            
-            if key not in printer_hardware:
-                printOutput('Caution! No suitable', key, 'found!')
-                checks_passed &= False
-            elif gcode_hardware[key] != 'any':
-                if gcode_hardware[key] != printer_hardware[key]:
-                    printOutput('Caution! Wrong', key, 'found!\n\tExpected', gcode_hardware[key], 'got', printer_hardware[key])
-                    checks_passed &= False
-
-        time6=time.time()
-        t5 = time6 - time5
-        t6 = time6 - time1
-        return checks_passed, outputStrings
 
