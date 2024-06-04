@@ -353,8 +353,8 @@ class Panel(ScreenPanel):
                 buttons = []
                 if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
                     # Scenario 1: config_yml doesn't exist for pantheonslicer
-                    label_text = "Caution: Out of date PantheonSlicer Detected\nUpdating to the newest version of pantheonslicer and profiles is highly recommended"
-                    label_class = 'compatibility-caution'
+                    label_text = "Caution: Out of date PantheonSlicer Detected\nPlease update PantheonSlicer and the profiles"
+                    label_class = 'compatibilityMessage-caution'
                     buttons = [
                         {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
                         {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
@@ -364,7 +364,7 @@ class Panel(ScreenPanel):
                         #Senario 2: config_verifier not found
                     if ('config_verifier' not in self.file_metadata):
                         label_text = f"Caution: config_verifier not found\nRe-uploading {filename} is recommended"
-                        label_class = 'compatibility-caution'
+                        label_class = 'compatibilityMessage-caution'
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
@@ -379,7 +379,7 @@ class Panel(ScreenPanel):
                         #Senario 4: Gcode_yml format is invalid
                     elif (self.file_metadata['config_verifier'][0] == 'Warning! gcode_yml cannot be loaded: invalid format detected'):
                         label_text = self.file_metadata['config_verifier'][0]
-                        label_class = 'compatibility-warning'
+                        label_class = 'compatibilityMessage-warning'
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
@@ -390,17 +390,23 @@ class Panel(ScreenPanel):
                         left_message = []
                         right_message = []
                         label_classes = []
+                        warningStrings = []
+                        cautionStrings = []
+                        dangerStrings = []
 
-                        label_text = "Differences detected:"
+                        label_text = f"Differences detected in {filename}"
                         label_class = ''
 
                         for entry in self.file_metadata['config_verifier']:
                             if entry.startswith("Warning!"):
                                 sublabel_class = 'compatibility-warning'
+                                warningStrings.append(entry)
                             elif entry.startswith("Danger!"):
                                 sublabel_class = 'compatibility-danger'
+                                dangerStrings.append(entry)
                             else:
                                 sublabel_class = 'compatibility-caution'
+                                cautionStrings.append(entry)
                             
                             # Split the entry to separate the error message and the expected message
                             parts = entry.split("\n\t")
@@ -416,6 +422,7 @@ class Panel(ScreenPanel):
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
                         ]
 
+                        
                         # Create a grid to display differences side by side
                         grid = Gtk.Grid()
                         grid.set_column_homogeneous(True)
@@ -428,7 +435,8 @@ class Panel(ScreenPanel):
                             orig_buffer = orig_textview.get_buffer()
                             orig_buffer.set_text(left_message[i])
                             orig_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-                            orig_textview.get_style_context().add_class(label_classes[i])
+                            #orig_textview.get_style_context().add_class(label_classes[i])
+
 
                             # Create TextView for Gcode message
                             gcode_textview = Gtk.TextView()
@@ -436,7 +444,8 @@ class Panel(ScreenPanel):
                             gcode_buffer = gcode_textview.get_buffer()
                             gcode_buffer.set_text(right_message[i])
                             gcode_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-                            gcode_textview.get_style_context().add_class(label_classes[i])
+                            #gcode_textview.get_style_context().add_class(label_classes[i])
+
 
                             # Add TextView widgets to the grid
                             grid.attach(orig_textview, 0, i + 1, 1, 1)
@@ -454,6 +463,8 @@ class Panel(ScreenPanel):
 
                 # Create label and add the appropriate style class
                 label = Gtk.Label(label=label_text)
+                warning_label = Gtk.Label(label="Warning")
+                caution_label = Gtk.Label(label="Caution")
                 if label_class:
                     label.get_style_context().add_class(label_class)
                 # Create a ScrolledWindow and set maximum height
@@ -481,11 +492,11 @@ class Panel(ScreenPanel):
 
                 dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
                 # Adding background color
-                #dialog.get_style_context().add_class('dialog-compatibility-warning')
+                #dialog.get_style_context().add_class('dialog-compatibilityMessage-warning')
             else:
                 # Scenario 6: not PantheonSlicer
-                label_text = f"<b>Warning: this gcode appears to be generated from a third-party slicer:({self.file_metadata['slicer']})</b>\n<b>There is a high chance of causing machine damage.</b>\n<b>Proceed with the print may void the warranty.</b>"
-                label_class = 'compatibility-warning'
+                label_text = f"<b>Warning: Third-party slicer detected: {self.file_metadata['slicer']} </b>"
+                label_class = 'compatibilityMessage-warning'
                 buttons = [
                     {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
                     {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
@@ -511,7 +522,7 @@ class Panel(ScreenPanel):
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                 box.add(scrolled_window)
 
-                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .20
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .50
                 pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
                 if pixbuf is not None:
                     image = Gtk.Image.new_from_pixbuf(pixbuf)

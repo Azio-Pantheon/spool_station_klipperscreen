@@ -303,13 +303,31 @@ textview .time {
 }
 
 .compatibility-warning {
+    color: orange;
     background-color: orange;
+
 }
 
 .compatibility-danger {
+    color: red;
     background-color: red;
+
 }
 
 .compatibility-caution {
+    color: @pantheon-yellow;
     background-color: @pantheon-yellow;
+
+}
+
+.compatibilityMessage-warning {
+    color: orange;
+}
+
+.compatibilityMessage-danger {
+    color: red;
+}
+
+.compatibilityMessage-caution {
+    color: @pantheon-yellow;
 }
