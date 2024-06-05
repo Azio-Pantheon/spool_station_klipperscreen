@@ -342,6 +342,9 @@ class Panel(ScreenPanel):
             self._screen._ws.klippy.print_start(filename)
 
     def confirm_compatible_print(self, widget, filename):
+        cautionGenericText = 'Print Quality may be degraded'
+        warningGenericText = 'Running this file may damage your machine'
+
         # if printer config doesnt exist, then skip all config checks
         if os.path.exists(printer_config_file_path):
             #Load the yml config from gcode
@@ -353,12 +356,38 @@ class Panel(ScreenPanel):
                 buttons = []
                 if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
                     # Scenario 1: config_yml doesn't exist for pantheonslicer
-                    label_text = "Caution: Out of date PantheonSlicer Detected\nPlease update PantheonSlicer and the profiles"
-                    label_class = 'compatibilityMessage-caution'
+                    label_text = Gtk.Label(label=f"<b><span size='20480'>Caution: {cautionGenericText} </span></b>")  
+                    label_text.get_style_context().add_class('compatibilityMessage-caution')
+                    label_text.set_use_markup(True)
+                    label_text.set_xalign(0.0)
+
+                    caution_label = Gtk.Label(label="Out of date PantheonSlicer Detected. Please update PantheonSlicer and the profiles")
+                    caution_label.set_use_markup(True)
+                    caution_label.set_xalign(0.0)
+
                     buttons = [
                         {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
                         {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
                     ]
+
+                    grid = Gtk.Grid()
+                    grid.set_column_homogeneous(True)
+                    grid.attach(label_text, 0, 0, 1, 1)
+                    grid.attach(caution_label, 0, 1, 1, 1)
+
+                    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                    box.add(grid)
+
+
+                    height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
+                    pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                    if pixbuf is not None:
+                        image = Gtk.Image.new_from_pixbuf(pixbuf)
+                        box.add(image)
+
+
+                    dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                    return
                 else:
                     # Scenario: config_yml exists
                         #Senario 2: config_verifier not found
@@ -377,13 +406,32 @@ class Panel(ScreenPanel):
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
                         ]
                         #Senario 4: Gcode_yml format is invalid
-                    elif (self.file_metadata['config_verifier'][0] == 'Warning! gcode_yml cannot be loaded: invalid format detected'):
-                        label_text = self.file_metadata['config_verifier'][0]
-                        label_class = 'compatibilityMessage-warning'
+                    elif (
+                        self.file_metadata['config_verifier'][0] == 'Warning! gcode_yml cannot be loaded: invalid format detected'):
+                        label_text = Gtk.Label(label=f"<b><span size='20480'>{self.file_metadata['config_verifier'][0]}</span></b>")
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
                         ]
+                        label_text.set_use_markup(True)
+                        label_text.set_xalign(0.0)
+                        label_text.get_style_context().add_class('compatibilityMessage-warning')
+
+                        grid = Gtk.Grid()
+                        grid.set_column_homogeneous(True)
+                        grid.attach(label_text, 0, 0, 1, 1)
+                        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                        box.add(grid)
+
+                        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
+                        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                        if pixbuf is not None:
+                            image = Gtk.Image.new_from_pixbuf(pixbuf)
+                            box.add(image)
+
+
+                        dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                        return
                     else:
                         # Scenario 5: config_yml exists, but Config check failed
                         # Find differences between the two YAML files
@@ -398,6 +446,7 @@ class Panel(ScreenPanel):
                         label_class = ''
 
                         for entry in self.file_metadata['config_verifier']:
+
                             if entry.startswith("Warning!"):
                                 sublabel_class = 'compatibility-warning'
                                 warningStrings.append(entry)
@@ -428,43 +477,45 @@ class Panel(ScreenPanel):
                         grid.set_column_homogeneous(True)
 
                         # Create TextView widgets to display the YAML content with appropriate classes
-                        for i in range(len(left_message)):
-                            # Create TextView for original message
-                            orig_textview = Gtk.TextView()
-                            orig_textview.set_editable(False)
-                            orig_buffer = orig_textview.get_buffer()
-                            orig_buffer.set_text(left_message[i])
-                            orig_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-                            #orig_textview.get_style_context().add_class(label_classes[i])
-
-
+                        for i in range(len(warningStrings)):
+                            if (i==0):
+                                warning_label = Gtk.Label(label=f'<b><span size="20480">Warning: {warningGenericText}</span></b>')
+                                warning_label.get_style_context().add_class('compatibilityMessage-warning')
+                                warning_label.set_use_markup(True)
+                                warning_label.set_xalign(0.0)
+                                grid.attach(warning_label, 0, i + 1, 2, 1)
                             # Create TextView for Gcode message
-                            gcode_textview = Gtk.TextView()
-                            gcode_textview.set_editable(False)
-                            gcode_buffer = gcode_textview.get_buffer()
-                            gcode_buffer.set_text(right_message[i])
-                            gcode_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-                            #gcode_textview.get_style_context().add_class(label_classes[i])
-
-
+                            warning_textview = Gtk.TextView()
+                            warning_textview.set_editable(False)
+                            warning_buffer = warning_textview.get_buffer()
+                            warning_buffer.set_text(warningStrings[i])
+                            warning_textview.set_wrap_mode(Gtk.WrapMode.WORD)
                             # Add TextView widgets to the grid
-                            grid.attach(orig_textview, 0, i + 1, 1, 1)
-                            grid.attach(gcode_textview, 1, i + 1, 1, 1)
-                        #===============================================================
-                        # Not sure why, but this block is needed for the TextViews above to show up 
-                        orig_textview = Gtk.TextView()
-                        orig_textview.set_editable(False)
-                        orig_buffer = orig_textview.get_buffer()
-                        orig_buffer.set_text("\n".join(['','']))
-                        orig_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-                        # # Add TextView widgets to the grid
-                        grid.attach(orig_textview, 0, len(left_message) + 1, 1, 1)
-                        #===============================================================
+                            grid.attach(warning_textview, 0, len(warningStrings) + i + 2, 2, 1)
 
-                # Create label and add the appropriate style class
-                label = Gtk.Label(label=label_text)
-                warning_label = Gtk.Label(label="Warning")
-                caution_label = Gtk.Label(label="Caution")
+                        # Create TextView widgets to display the YAML content with appropriate classes
+                        for i in range(len(cautionStrings)):
+                            if (i==0):
+                                caution_label = Gtk.Label(label=f'<b><span size="20480">Caution: {cautionGenericText}</span></b>')
+                                caution_label.get_style_context().add_class('compatibilityMessage-caution')
+                                caution_label.set_use_markup(True)
+                                caution_label.set_xalign(0.0)
+                                grid.attach(caution_label, 0, len(warningStrings) + i + 5, 2, 1)
+                            # Create TextView for Gcode message
+                            caution_textview = Gtk.TextView()
+                            caution_textview.set_editable(False)
+                            caution_buffer = caution_textview.get_buffer()
+                            caution_buffer.set_text(cautionStrings[i])
+                            caution_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+                            # Add TextView widgets to the grid
+                            grid.attach(caution_textview, 0, len(warningStrings) + i + 6, 2, 1)
+
+                        # Create TextView widgets to display the YAML content with appropriate classes
+                        # DangerStrings is not implemented
+
+                    # Create label and add the appropriate style class
+                    label = Gtk.Label(label=label_text)
+                
                 if label_class:
                     label.get_style_context().add_class(label_class)
                 # Create a ScrolledWindow and set maximum height
@@ -483,7 +534,7 @@ class Panel(ScreenPanel):
                 box.add(scrolled_window)
 
 
-                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .50
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .35
                 pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
                 if pixbuf is not None:
                     image = Gtk.Image.new_from_pixbuf(pixbuf)
@@ -495,38 +546,34 @@ class Panel(ScreenPanel):
                 #dialog.get_style_context().add_class('dialog-compatibilityMessage-warning')
             else:
                 # Scenario 6: not PantheonSlicer
-                label_text = f"<b>Warning: Third-party slicer detected: {self.file_metadata['slicer']} </b>"
-                label_class = 'compatibilityMessage-warning'
+                label_text = Gtk.Label(label=f"<b><span size='20480'>Warning: {warningGenericText}</span></b>")  
+                label_text.get_style_context().add_class('compatibilityMessage-caution')
+                label_text.set_use_markup(True)
+                label_text.set_xalign(0.0)
+
+                caution_label = Gtk.Label(label=f"Third-party slicer detected: {self.file_metadata['slicer']} ")
+                caution_label.set_use_markup(True)
+                caution_label.set_xalign(0.0)
+
                 buttons = [
                     {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
                     {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
                 ]
-                # Create label and add the appropriate style class
-                label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
-                label.set_markup(label_text)
-                if label_class:
-                    label.get_style_context().add_class(label_class)
-                # Create a ScrolledWindow and set maximum height
-                scrolled_window = Gtk.ScrolledWindow()
-                scrolled_window.set_hexpand(True)
-                scrolled_window.set_vexpand(True)
-                scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-                scrolled_window.set_max_content_height(300)  # Set the maximum height as needed
 
-                if 'grid' in locals():
-                    grid.attach(label, 0, 0, 2, 1)
-                    scrolled_window .add(grid)
-                else:
-                    scrolled_window .add(label)
+                grid = Gtk.Grid()
+                grid.set_column_homogeneous(True)
+                grid.attach(label_text, 0, 0, 1, 1)
+                grid.attach(caution_label, 0, 1, 1, 1)
 
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                box.add(scrolled_window)
+                box.add(grid)
 
-                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .50
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
                 pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
                 if pixbuf is not None:
                     image = Gtk.Image.new_from_pixbuf(pixbuf)
                     box.add(image)
+
 
                 dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
         else:
