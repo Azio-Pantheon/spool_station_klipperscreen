@@ -342,11 +342,10 @@ class Panel(ScreenPanel):
     def confirm_compatible_print(self, widget, filename):
         cautionGenericText = 'Print Quality may be degraded'
         warningGenericText = 'Running this file may damage your machine'
-
+        self.file_metadata = self._files.get_file_info(filename)
         # if printer config doesnt exist, then skip all config checks
-        if ('config_verifier' in self.file_metadata):
+        if (self.file_metadata['enable_config_verifier']):
             #Load the yml config from gcode
-            self.file_metadata = self._files.get_file_info(filename)
             label_text = ""
             label_class = ""
             # if the slicer is not PantheonSlicer then show a warning
@@ -389,30 +388,27 @@ class Panel(ScreenPanel):
                     dialog.get_style_context().add_class('confirmPrintDialog')
                     return
                 else:
-
-                    #Senario 2: Config check passed
-                    if (self.file_metadata['config_verifier'] == []):
-                        label_text = f"{filename}\n"
-                        buttons = [
-                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
-                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
-                        ]
-                        #Senario 3: Gcode_yml format is invalid
-                    elif (
-                        self.file_metadata['config_verifier'][0] == 'Warning! gcode_yml cannot be loaded: invalid format detected'):
-                        label_text = Gtk.Label(label=f"<b><span size='20480'>{self.file_metadata['config_verifier'][0]}</span></b>")
-                        buttons = [
-                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
-                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
-                        ]
+                    if ('config_verifier' not in self.file_metadata):
+                        label_text = Gtk.Label(label=f"<b><span size='20480'>Caution: {cautionGenericText}</span></b>")  
+                        label_text.get_style_context().add_class('compatibilityMessage-caution')
                         label_text.set_use_markup(True)
                         label_text.set_xalign(0.0)
-                        label_text.get_style_context().add_class('compatibilityMessage-warning')
+
+                        warning_label = Gtk.Label(label=f"Gcode_yml format is invalid. Please try update PantheonSlicer profiles or check gcode content")
+                        warning_label.set_use_markup(True)
+                        warning_label.set_xalign(0.0)
+                        
+                        buttons = [
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
 
                         grid = Gtk.Grid()
                         grid.set_column_homogeneous(True)
                         label_text.set_margin_bottom(10)
                         grid.attach(label_text, 0, 0, 1, 1)
+                        grid.attach(warning_label, 0, 1, 1, 1)
+
                         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                         box.add(grid)
 
@@ -425,7 +421,14 @@ class Panel(ScreenPanel):
 
                         dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
                         dialog.get_style_context().add_class('confirmPrintDialog')
-                        return
+                        return    
+                    #Senario 2: Config check passed
+                    if (self.file_metadata['config_verifier'] == []):
+                        label_text = f"{filename}\n"
+                        buttons = [
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
                     else:
                         # Scenario 4: config_yml exists, but Config check failed
                         # Find differences between the two YAML files
