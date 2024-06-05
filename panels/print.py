@@ -366,12 +366,13 @@ class Panel(ScreenPanel):
                     caution_label.set_xalign(0.0)
 
                     buttons = [
-                        {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
-                        {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
+                        {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                        {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
                     ]
 
                     grid = Gtk.Grid()
                     grid.set_column_homogeneous(True)
+                    label_text.set_margin_bottom(10)
                     grid.attach(label_text, 0, 0, 1, 1)
                     grid.attach(caution_label, 0, 1, 1, 1)
 
@@ -387,18 +388,46 @@ class Panel(ScreenPanel):
 
 
                     dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                    dialog.get_style_context().add_class('confirmPrintDialog')
                     return
                 else:
                     # Scenario: config_yml exists
                         #Senario 2: config_verifier not found
                     if ('config_verifier' not in self.file_metadata):
-                        label_text = f"Caution: config_verifier not found\nRe-uploading {filename} is recommended"
-                        label_class = 'compatibilityMessage-caution'
+                        label_text = Gtk.Label(label=f"<b><span size='20480'>Caution: config_verifier not found</span></b>")
+                        label_text.get_style_context().add_class('compatibilityMessage-caution')
+                        label_text.set_use_markup(True)
+                        label_text.set_xalign(0.0)
+
+                        caution_label = Gtk.Label(label=f"Re-uploading {filename} is recommended")
+                        caution_label.set_use_markup(True)
+                        caution_label.set_xalign(0.0)
+
                         buttons = [
-                            {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
-                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
-                        ] 
-                        #Senario 3: Config check passed
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
+                        grid = Gtk.Grid()
+                        grid.set_column_homogeneous(True)
+                        label_text.set_margin_bottom(10)
+                        grid.attach(label_text, 0, 0, 1, 1)
+                        grid.attach(caution_label, 0, 1, 1, 1)
+
+                        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                        box.add(grid)
+
+
+                        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
+                        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                        if pixbuf is not None:
+                            image = Gtk.Image.new_from_pixbuf(pixbuf)
+                            box.add(image)
+
+
+                        dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                        dialog.get_style_context().add_class('confirmPrintDialog')
+                        return
+                    #Senario 3: Config check passed
                     elif (self.file_metadata['config_verifier'] == []):
                         label_text = f"{filename}\n"
                         buttons = [
@@ -419,6 +448,7 @@ class Panel(ScreenPanel):
 
                         grid = Gtk.Grid()
                         grid.set_column_homogeneous(True)
+                        label_text.set_margin_bottom(10)
                         grid.attach(label_text, 0, 0, 1, 1)
                         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                         box.add(grid)
@@ -431,6 +461,7 @@ class Panel(ScreenPanel):
 
 
                         dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                        dialog.get_style_context().add_class('confirmPrintDialog')
                         return
                     else:
                         # Scenario 5: config_yml exists, but Config check failed
@@ -483,6 +514,7 @@ class Panel(ScreenPanel):
                                 warning_label.get_style_context().add_class('compatibilityMessage-warning')
                                 warning_label.set_use_markup(True)
                                 warning_label.set_xalign(0.0)
+                                warning_label.set_margin_bottom(10)
                                 grid.attach(warning_label, 0, i + 1, 2, 1)
                             # Create TextView for Gcode message
                             warning_textview = Gtk.TextView()
@@ -500,6 +532,7 @@ class Panel(ScreenPanel):
                                 caution_label.get_style_context().add_class('compatibilityMessage-caution')
                                 caution_label.set_use_markup(True)
                                 caution_label.set_xalign(0.0)
+                                caution_label.set_margin_bottom(10)
                                 grid.attach(caution_label, 0, len(warningStrings) + i + 5, 2, 1)
                             # Create TextView for Gcode message
                             caution_textview = Gtk.TextView()
@@ -507,6 +540,8 @@ class Panel(ScreenPanel):
                             caution_buffer = caution_textview.get_buffer()
                             caution_buffer.set_text(cautionStrings[i])
                             caution_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+
+
                             # Add TextView widgets to the grid
                             grid.attach(caution_textview, 0, len(warningStrings) + i + 6, 2, 1)
 
@@ -532,7 +567,7 @@ class Panel(ScreenPanel):
                     scrolled_window .add(label)
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                 box.add(scrolled_window)
-
+                #box.get_style_context().add_class('confirmPrintDialog')
 
                 height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .35
                 pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
@@ -542,28 +577,30 @@ class Panel(ScreenPanel):
 
 
                 dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                dialog.get_style_context().add_class('confirmPrintDialog')
                 # Adding background color
                 #dialog.get_style_context().add_class('dialog-compatibilityMessage-warning')
             else:
                 # Scenario 6: not PantheonSlicer
                 label_text = Gtk.Label(label=f"<b><span size='20480'>Warning: {warningGenericText}</span></b>")  
-                label_text.get_style_context().add_class('compatibilityMessage-caution')
+                label_text.get_style_context().add_class('compatibilityMessage-warning')
                 label_text.set_use_markup(True)
                 label_text.set_xalign(0.0)
 
-                caution_label = Gtk.Label(label=f"Third-party slicer detected: {self.file_metadata['slicer']} ")
-                caution_label.set_use_markup(True)
-                caution_label.set_xalign(0.0)
-
+                warning_label = Gtk.Label(label=f"Third-party slicer detected: {self.file_metadata['slicer']} ")
+                warning_label.set_use_markup(True)
+                warning_label.set_xalign(0.0)
+                
                 buttons = [
-                    {"name": _("Print"), "response": Gtk.ResponseType.OK, "style": 'dialog-error'},
-                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL}
+                    {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
                 ]
 
                 grid = Gtk.Grid()
                 grid.set_column_homogeneous(True)
+                label_text.set_margin_bottom(10)
                 grid.attach(label_text, 0, 0, 1, 1)
-                grid.attach(caution_label, 0, 1, 1, 1)
+                grid.attach(warning_label, 0, 1, 1, 1)
 
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                 box.add(grid)
@@ -576,6 +613,7 @@ class Panel(ScreenPanel):
 
 
                 dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                dialog.get_style_context().add_class('confirmPrintDialog')
         else:
             buttons = [
                 {"name": _("Print"), "response": Gtk.ResponseType.OK},
@@ -594,7 +632,8 @@ class Panel(ScreenPanel):
                 image = Gtk.Image.new_from_pixbuf(pixbuf)
                 box.add(image)
 
-            self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
+            dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
+            dialog.get_style_context().add_class('confirmPrintDialog')
 
 
     def confirm_compatible_print_response(self, dialog, response_id, filename):

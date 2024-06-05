@@ -303,15 +303,15 @@ textview .time {
 }
 
 .compatibility-warning {
-    background-color: orange;
+    color: orange;
 }
 
 .compatibility-danger {
-    background-color: red;
+    color: red;
 }
 
 .compatibility-caution {
-    background-color: @pantheon-yellow;
+    color: @pantheon-yellow;
 }
 
 .compatibilityMessage-warning {
@@ -327,4 +327,8 @@ textview .time {
 .compatibilityMessage-caution {
     background-color: @pantheon-yellow;
     color: black;
+}
+
+.confirmPrintDialog{
+    background-color: @pantheon-background-grey;
 }
