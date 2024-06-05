@@ -344,7 +344,7 @@ class Panel(ScreenPanel):
         warningGenericText = 'Running this file may damage your machine'
         self.file_metadata = self._files.get_file_info(filename)
         # if printer config doesnt exist, then skip all config checks
-        if (self.file_metadata['enable_config_verifier']):
+        if (('enable_config_verifier' not in self.file_metadata) or self.file_metadata['enable_config_verifier']):
             #Load the yml config from gcode
             label_text = ""
             label_class = ""
