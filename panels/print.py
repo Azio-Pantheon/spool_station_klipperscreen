@@ -13,8 +13,6 @@ from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
 from ks_includes.widgets.flowboxchild_extended import PrintListItem
 
-printer_config_file_path = '/home/hs3/printer_data/config/printer-config.yml'
-
 
 
 
@@ -346,7 +344,7 @@ class Panel(ScreenPanel):
         warningGenericText = 'Running this file may damage your machine'
 
         # if printer config doesnt exist, then skip all config checks
-        if os.path.exists(printer_config_file_path):
+        if ('config_verifier' in self.file_metadata):
             #Load the yml config from gcode
             self.file_metadata = self._files.get_file_info(filename)
             label_text = ""
@@ -391,50 +389,15 @@ class Panel(ScreenPanel):
                     dialog.get_style_context().add_class('confirmPrintDialog')
                     return
                 else:
-                    # Scenario: config_yml exists
-                        #Senario 2: config_verifier not found
-                    if ('config_verifier' not in self.file_metadata):
-                        label_text = Gtk.Label(label=f"<b><span size='20480'>Caution: config_verifier not found</span></b>")
-                        label_text.get_style_context().add_class('compatibilityMessage-caution')
-                        label_text.set_use_markup(True)
-                        label_text.set_xalign(0.0)
 
-                        caution_label = Gtk.Label(label=f"Re-uploading {filename} is recommended")
-                        caution_label.set_use_markup(True)
-                        caution_label.set_xalign(0.0)
-
-                        buttons = [
-                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
-                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
-                        ]
-                        grid = Gtk.Grid()
-                        grid.set_column_homogeneous(True)
-                        label_text.set_margin_bottom(10)
-                        grid.attach(label_text, 0, 0, 1, 1)
-                        grid.attach(caution_label, 0, 1, 1, 1)
-
-                        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                        box.add(grid)
-
-
-                        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
-                        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
-                        if pixbuf is not None:
-                            image = Gtk.Image.new_from_pixbuf(pixbuf)
-                            box.add(image)
-
-
-                        dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
-                        dialog.get_style_context().add_class('confirmPrintDialog')
-                        return
-                    #Senario 3: Config check passed
-                    elif (self.file_metadata['config_verifier'] == []):
+                    #Senario 2: Config check passed
+                    if (self.file_metadata['config_verifier'] == []):
                         label_text = f"{filename}\n"
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
                         ]
-                        #Senario 4: Gcode_yml format is invalid
+                        #Senario 3: Gcode_yml format is invalid
                     elif (
                         self.file_metadata['config_verifier'][0] == 'Warning! gcode_yml cannot be loaded: invalid format detected'):
                         label_text = Gtk.Label(label=f"<b><span size='20480'>{self.file_metadata['config_verifier'][0]}</span></b>")
@@ -464,7 +427,7 @@ class Panel(ScreenPanel):
                         dialog.get_style_context().add_class('confirmPrintDialog')
                         return
                     else:
-                        # Scenario 5: config_yml exists, but Config check failed
+                        # Scenario 4: config_yml exists, but Config check failed
                         # Find differences between the two YAML files
                         left_message = []
                         right_message = []
@@ -581,7 +544,7 @@ class Panel(ScreenPanel):
                 # Adding background color
                 #dialog.get_style_context().add_class('dialog-compatibilityMessage-warning')
             else:
-                # Scenario 6: not PantheonSlicer
+                # Scenario 5: not PantheonSlicer
                 label_text = Gtk.Label(label=f"<b><span size='20480'>Warning: {warningGenericText}</span></b>")  
                 label_text.get_style_context().add_class('compatibilityMessage-warning')
                 label_text.set_use_markup(True)
