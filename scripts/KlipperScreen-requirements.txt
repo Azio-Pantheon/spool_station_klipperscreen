@@ -19,5 +19,5 @@ PyGObject==3.48.1;python_version>="3.8"
 pycairo==1.26.0;python_version>="3.8"
 websocket-client==1.7.0;python_version>="3.8"
 
-yaml==6.0.1
+pyyaml==6.0.1
 jsonschema==4.22.0
