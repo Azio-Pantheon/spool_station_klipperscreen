@@ -281,7 +281,10 @@ class SdbusNm:
             return {"error": "deletion_failed", "message": _("Failed to delete connection") + f"\n{e}"}
 
     def rescan(self):
-        return self.wlan_device.request_scan({})
+        try:
+            return self.wlan_device.request_scan({})
+        except Exception as e:
+            self.popup(f"Unexpected error: {e}")
 
     def get_connection_by_ssid(self, ssid):
         existing_networks = NetworkManagerSettings().list_connections()
