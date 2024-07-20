@@ -157,10 +157,7 @@ class SdbusNm:
         return known_networks
 
     def is_known(self, ssid):
-        return any(net['SSID'] == ssid for net in self.get_known_networks())
-
-    def is_open(self, ssid):
-        return self.get_security_type(ssid) == "Open"
+        return any(net["SSID"] == ssid for net in self.get_known_networks())
 
     def get_ip_address(self):
         active_connection_path = self.nm.primary_connection
@@ -239,8 +236,21 @@ class SdbusNm:
             properties["802-11-wireless"]["security"] = ("s", "802-11-wireless-security")
             properties["802-11-wireless-security"] = {
                 "key-mgmt": ("s", "wpa-psk"),
-                "auth-alg": ("s", "open"),
                 "psk": ("s", psk),
+            }
+        elif "SAE" in security_type:
+            properties["802-11-wireless-security"] = {
+                "key-mgmt": ("s", "sae"),
+                "psk": ("s", psk),
+            }
+        elif "WPA3-B192" in security_type:
+            properties["802-11-wireless-security"] = {
+                "key-mgmt": ("s", "wpa-eap-suite-b-192"),
+                "psk": ("s", psk),
+            }
+        elif "OWE" in security_type:
+            properties["802-11-wireless-security"] = {
+                "key-mgmt": ("s", "owe"),
             }
         elif "WEP" in security_type:
             properties["802-11-wireless"]["security"] = ("s", "802-11-wireless-security")
