@@ -2,7 +2,7 @@ import logging
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib, Gdk
+from gi.repository import Gtk, GLib, Gdk, Pango, GdkPixbuf
 from panels.menu import Panel as MenuPanel
 from ks_includes.widgets.heatergraph import HeaterGraph
 from ks_includes.widgets.keypad import Keypad
@@ -33,7 +33,34 @@ class Panel(MenuPanel):
         else:
             self.labels['menu'] = self.arrangeMenuItems(items, 2, True)
             scroll.add(self.labels['menu'])
-            self.main_menu.attach(scroll, 1, 0, 1, 1)
+            #self.main_menu.attach(scroll, 1, 0, 1, 1)
+            self.prime_button = self._gtk.Button("complete","prepare_print","color4")
+            style_context = self.prime_button.get_style_context()
+
+            self.prime_button.get_style_context().add_class('prepare_print')
+            self.prime_button.get_style_context().add_class('color1')
+
+            self.prime_button.get_style_context().remove_class('text-button')
+            self.prime_button.connect("clicked", self.prime_print)
+
+            aaa = style_context.list_classes()
+
+            #prime_button.set_size_request(200, 200)
+            # Create an overlay widget
+            overlay = Gtk.Overlay()
+
+            # Add the scroll with the menu to the overlay as the base layer
+            overlay.add(scroll)
+
+            # Add the button to the overlay; this will be rendered on top
+            overlay.add_overlay(self.prime_button)
+
+            # Set button position relative to the overlay
+            self.prime_button.set_halign(Gtk.Align.CENTER)  # Horizontal alignment (center, start, end)
+            self.prime_button.set_valign(Gtk.Align.END)   # Vertical alignment (start, center, end)
+
+            # Attach the overlay to the grid instead of the scroll directly
+            self.main_menu.attach(overlay, 1, 0, 1, 1)
         self.content.add(self.main_menu)
 
     def update_graph_visibility(self):
@@ -271,6 +298,9 @@ class Panel(MenuPanel):
         self._screen.base_panel.set_control_sensitive(False, control='back')
 
     def process_update(self, action, data):
+        if "print_stats" in data:
+            if 'state' in data['print_stats']:
+                a = 1
         if action != "notify_status_update":
             return
         for x in self._printer.get_temp_devices():
@@ -314,3 +344,42 @@ class Panel(MenuPanel):
             self.hide_numpad()
             return True
         return False
+
+    def prime_print(self, widget):
+
+        buttons = [
+            {"name": _("Prime"), "response": Gtk.ResponseType.OK},
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+        ]
+
+        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        label.set_markup(f"<b>{'Follow the instruction to prime the printer:'}</b>\n")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.add(label)
+
+        # Load the GIF
+        gif_animation = GdkPixbuf.PixbufAnimation.new_from_file("/home/hs3/KlipperScreen/docs/img/neko-cat.gif")
+        gif_image = Gtk.Image.new_from_animation(gif_animation)
+        
+        # Add the GIF to the box
+        box.add(gif_image)
+
+        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+        #pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+        #if pixbuf is not None:
+        #    image = Gtk.Image.new_from_pixbuf(pixbuf)
+        #    box.add(image)
+
+        self._gtk.Dialog(_("Prime Test"), buttons, box, self.prime_print_response)
+
+    def prime_print_response(self, dialog, response_id):
+        self._gtk.remove_dialog(dialog)
+        if response_id == Gtk.ResponseType.OK:
+            logging.info(f"Starting prime")
+            self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
+            # TODO: IMPLEMENT THE FUNCTION FOR CALLING THE SCRIPT TO CHANGE THE STATE
+            # self._screen._ws.klippy.print_start(filename)
+            # self.prime_button.show()
+
+            self.prime_button.hide()
