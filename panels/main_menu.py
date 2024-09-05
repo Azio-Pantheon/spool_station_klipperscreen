@@ -45,11 +45,8 @@ class Panel(MenuPanel):
 
             self.prime_button.get_style_context().remove_class('text-button')
             self.prime_button.connect("clicked", self.prime_print)
-
-            # Debug code
-            aaa = style_context.list_classes()
             
-            self.prime_button.set_size_request(500, 188)
+            self.prime_button.set_size_request(470, 188)
             # Create an overlay widget
             overlay = Gtk.Overlay()
 
@@ -381,12 +378,6 @@ class Panel(MenuPanel):
         # Add the GIF to the box
         box.add(gif_image)
 
-        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
-        #pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
-        #if pixbuf is not None:
-        #    image = Gtk.Image.new_from_pixbuf(pixbuf)
-        #    box.add(image)
-
         self._gtk.Dialog(_("Prime Test"), buttons, box, self.prime_print_response)
 
     def prime_print_response(self, dialog, response_id):
@@ -394,10 +385,6 @@ class Panel(MenuPanel):
         if response_id == Gtk.ResponseType.OK:
             logging.info(f"Starting prime")
             self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
-            # TODO: IMPLEMENT THE FUNCTION FOR CALLING THE SCRIPT TO CHANGE THE STATE
-            # self._screen._ws.klippy.print_start(filename)
-            # self.prime_button.show()
-
             self.is_primed = True
 
     def hide_prime_button(self):
