@@ -19,6 +19,7 @@ class Panel(MenuPanel):
         self.main_menu = Gtk.Grid(row_homogeneous=True, column_homogeneous=True, hexpand=True, vexpand=True)
         scroll = self._gtk.ScrolledWindow()
         self.numpad_visible = False
+        self.is_primed = True
 
         logging.info("### Making MainMenu")
 
@@ -34,18 +35,21 @@ class Panel(MenuPanel):
             self.labels['menu'] = self.arrangeMenuItems(items, 2, True)
             scroll.add(self.labels['menu'])
             #self.main_menu.attach(scroll, 1, 0, 1, 1)
-            self.prime_button = self._gtk.Button("complete","prepare_print","color4")
+            # TODO: Need an icon for prime printer
+            self.prime_button = self._gtk.Button("complete","Prime Printer")
             style_context = self.prime_button.get_style_context()
 
-            self.prime_button.get_style_context().add_class('prepare_print')
+            self.prime_button.get_style_context().add_class('print')
+
             self.prime_button.get_style_context().add_class('color1')
 
             self.prime_button.get_style_context().remove_class('text-button')
             self.prime_button.connect("clicked", self.prime_print)
 
+            # Debug code
             aaa = style_context.list_classes()
-
-            #prime_button.set_size_request(200, 200)
+            
+            self.prime_button.set_size_request(500, 188)
             # Create an overlay widget
             overlay = Gtk.Overlay()
 
@@ -61,6 +65,9 @@ class Panel(MenuPanel):
 
             # Attach the overlay to the grid instead of the scroll directly
             self.main_menu.attach(overlay, 1, 0, 1, 1)
+
+            self.prime_button.connect("realize", lambda widget: widget.hide())
+
         self.content.add(self.main_menu)
 
     def update_graph_visibility(self):
@@ -300,7 +307,16 @@ class Panel(MenuPanel):
     def process_update(self, action, data):
         if "print_stats" in data:
             if 'state' in data['print_stats']:
-                a = 1
+                if data["print_stats"]["state"] in ["cancelled", "error", "complete"]:
+                    self.is_primed = False
+                else:
+                    self.is_primed = True
+
+        if self.is_primed:
+            self.hide_prime_button()
+        else:
+            self.show_prime_button()
+
         if action != "notify_status_update":
             return
         for x in self._printer.get_temp_devices():
@@ -382,4 +398,10 @@ class Panel(MenuPanel):
             # self._screen._ws.klippy.print_start(filename)
             # self.prime_button.show()
 
-            self.prime_button.hide()
+            self.is_primed = True
+
+    def hide_prime_button(self):
+        self.prime_button.hide()
+
+    def show_prime_button(self):
+        self.prime_button.show()
