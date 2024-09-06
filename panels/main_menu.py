@@ -371,6 +371,20 @@ class Panel(MenuPanel):
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.add(label)
 
+        # Add another label with instructions
+        instructions = """
+        <b>1.</b> Clear bed of parts, prime line, and supports.\n
+        <b>2.</b> Inspect nozzle for goop, clean if goopy.\n
+        <b>3.</b> Clean bed with alcohol and clean room wipe.\n
+        <b>4.</b> Coat bed with adhesive.
+        """
+
+        instructions_label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        instructions_label.set_markup(instructions)
+
+        # Add the instructions label to the box
+        box.add(instructions_label)
+
         # Load the GIF
         gif_animation = GdkPixbuf.PixbufAnimation.new_from_file("/home/hs3/KlipperScreen/docs/img/neko-cat.gif")
         gif_image = Gtk.Image.new_from_animation(gif_animation)
