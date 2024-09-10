@@ -41,6 +41,8 @@ class Panel(ScreenPanel):
             'unload': self._gtk.Button("arrow-up", _("Unload"), "color2"),
             'temperature': self._gtk.Button("heat-up", _("Temperature"), "color4"),
             'spoolman': self._gtk.Button("spoolman", "Spoolman", "color3"),
+            'set_filament': self._gtk.Button("spoolman", "Set Filament", "color3"),
+            'set_nozzle': self._gtk.Button("spoolman", "Set Nozzle Size", "color3"),
         }
         self.buttons['extrude'].connect("clicked", self.extrude, "+")
         self.buttons['retract'].connect("clicked", self.extrude, "-")
@@ -89,7 +91,10 @@ class Panel(ScreenPanel):
             xbox.add(self.buttons['temperature'])
         if i < (limit - 1) and self._printer.spoolman:
             xbox.add(self.buttons['spoolman'])
-            
+
+        xbox.add(self.buttons['set_filament'])
+        xbox.add(self.buttons['set_nozzle'])
+
 
         distgrid = Gtk.Grid()
         for j, i in enumerate(self.distances):
