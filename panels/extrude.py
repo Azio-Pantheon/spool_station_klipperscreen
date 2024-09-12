@@ -327,14 +327,23 @@ class Panel(ScreenPanel):
         # Close the dialog when a filament type is selected
         dialog.destroy()
 
-        # Send Moonraker requests to set the filament type
-        self._screen._ws.send_method("server.database.post_item", {
-            "namespace": "HS3",
-            "key": "filament_type",
-            "value": filament_type
-        })
-        # Show a popup message to confirm the selection
-        self._screen.show_popup_message(f"Filament type set to {filament_type}", level=1)
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(f"Failed to set filament type: {response['error']['message']}", level=3)
+            else:
+                self._screen.show_popup_message(f"Filament type set to {filament_type}", level=1)
+
+        # Send Moonraker requests to set the filament type, passing the callback
+        self._screen._ws.send_method(
+            "server.database.post_item", 
+            {
+                "namespace": "HS3",
+                "key": "filament_type",
+                "value": filament_type
+            },
+            handle_response  # Pass the callback here
+        )
 
 
     def open_nozzle_selection(self, widget):
@@ -377,14 +386,23 @@ class Panel(ScreenPanel):
         # Close the dialog when a nozzle size is selected
         dialog.destroy()
 
-        # Send Moonraker requests to set the nozzle size
-        self._screen._ws.send_method("server.database.post_item", {
-            "namespace": "HS3",
-            "key": "nozzle_size",
-            "value": nozzle_size
-        })
-        # Show a popup message to confirm the selection
-        self._screen.show_popup_message(f"Nozzle size set to {nozzle_size}mm", level=1)
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(f"Failed to set nozzle size: {response['error']['message']}", level=3)
+            else:
+                self._screen.show_popup_message(f"Nozzle size set to {nozzle_size}mm", level=1)
+
+        # Send Moonraker requests to set the nozzle size, passing the callback
+        self._screen._ws.send_method(
+            "server.database.post_item",
+            {
+                "namespace": "HS3",
+                "key": "nozzle_size",
+                "value": nozzle_size
+            },
+            handle_response  # Pass the callback here
+        )
 
 class ClickOutsideDialog(Gtk.Dialog):
     def __init__(self, *args, **kwargs):
