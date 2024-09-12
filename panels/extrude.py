@@ -56,6 +56,8 @@ class Panel(ScreenPanel):
             "name": "Spoolman",
             "panel": "spoolman"
         })
+        self.buttons['set_filament'].connect("clicked", self.open_filament_selection)
+        self.buttons['set_nozzle'].connect("clicked", self.open_nozzle_selection)
 
         xbox = Gtk.Box(homogeneous=True)
         limit = 4
@@ -283,3 +285,119 @@ class Panel(ScreenPanel):
             self._screen._ws.klippy.gcode_script(f"SET_FILAMENT_SENSOR SENSOR={name} ENABLE=0")
             self.labels[x]['box'].get_style_context().remove_class("filament_sensor_empty")
             self.labels[x]['box'].get_style_context().remove_class("filament_sensor_detected")
+
+    def open_filament_selection(self, widget):
+        # List of filament types including a custom option
+        filament_types = ["PETG-CF", "PA-CF", "PA-GF", "TPU", "Custom"]
+
+        # Create the dialog for selecting filament types
+        dialog = ClickOutsideDialog(title="Select Filament Type",
+                                    transient_for=widget.get_toplevel(),
+                                    flags=Gtk.DialogFlags.MODAL)
+        dialog.set_default_size(600, 250)
+
+        # Create a grid layout to place the buttons
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+        grid.set_column_spacing(10)
+        grid.set_row_spacing(10)
+        grid.set_margin_start(10)
+        grid.set_margin_end(10)
+        grid.set_margin_top(10)
+        grid.set_margin_bottom(10)
+
+        # Create buttons for each filament type and add them to the grid
+        for i, filament in enumerate(filament_types):
+            button = Gtk.Button(label=filament)
+            button.set_size_request(150, 200)
+            button.connect("clicked", self.set_filament_type, filament, dialog)
+            grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
+
+        # Add the grid to the dialog content area and show all
+        content_area = dialog.get_content_area()
+        content_area.add(grid)
+        dialog.show_all()
+
+    def set_filament_type(self, widget, filament_type, dialog):
+        # Close the dialog when a filament type is selected
+        dialog.destroy()
+
+        # Send Moonraker requests to set the filament type
+        self._screen._ws.send_method("server.database.post_item", {
+            "namespace": "HS3",
+            "key": "filament_type",
+            "value": filament_type
+        })
+        # Show a popup message to confirm the selection
+        self._screen.show_popup_message(f"Filament type set to {filament_type}", level=1)
+
+
+    def open_nozzle_selection(self, widget):
+        # List of nozzle sizes
+        nozzle_sizes = ["0.4", "0.5", "0.6", "0.8"]
+
+        # Create the dialog for selecting nozzle sizes
+        dialog = ClickOutsideDialog(title="Select Nozzle Size",
+                                    transient_for=widget.get_toplevel(),
+                                    flags=Gtk.DialogFlags.MODAL)
+        dialog.set_default_size(600, 250)
+
+        # Create a grid layout to place the buttons
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+        grid.set_column_spacing(10)
+        grid.set_row_spacing(10)
+        grid.set_margin_start(10)
+        grid.set_margin_end(10)
+        grid.set_margin_top(10)
+        grid.set_margin_bottom(10)
+
+        # Create buttons for each nozzle size and add them to the grid
+        for i, size in enumerate(nozzle_sizes):
+            button = Gtk.Button(label=f"{size}mm")
+            button.set_size_request(150, 200)
+            button.connect("clicked", self.set_nozzle_size, size, dialog)
+            grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
+
+        # Add the grid to the dialog content area and show all
+        content_area = dialog.get_content_area()
+        content_area.add(grid)
+        dialog.show_all()
+
+    def set_nozzle_size(self, widget, nozzle_size, dialog):
+        # Close the dialog when a nozzle size is selected
+        dialog.destroy()
+
+        # Send Moonraker requests to set the nozzle size
+        self._screen._ws.send_method("server.database.post_item", {
+            "namespace": "HS3",
+            "key": "nozzle_size",
+            "value": nozzle_size
+        })
+        # Show a popup message to confirm the selection
+        self._screen.show_popup_message(f"Nozzle size set to {nozzle_size}mm", level=1)
+
+class ClickOutsideDialog(Gtk.Dialog):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Set dialog to modal and always above other windows (optional)
+        self.set_modal(True)
+        self.set_keep_above(True)
+
+        # Connect event to detect clicks outside the dialog
+        self.get_toplevel().connect("button-press-event", self.on_button_press)
+
+    def on_button_press(self, widget, event):
+        # Get the dialog's allocation (size) and position
+        allocation = self.get_allocation()
+        x, y = self.get_position()
+
+        # Check if the click is outside the dialog
+        if not (x <= event.x_root <= x + allocation.width and
+                y <= event.y_root <= y + allocation.height):
+            self.destroy()
+            return True  # Event handled
+        return False  # Let other handlers process the event
