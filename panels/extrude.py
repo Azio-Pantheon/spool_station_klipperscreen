@@ -271,6 +271,7 @@ class Panel(ScreenPanel):
             else:
                 self._screen._send_action(widget, "printer.gcode.script",
                                           {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+            self.open_filament_selection(widget)
 
     def enable_disable_fs(self, switch, gparams, name, x):
         if switch.get_active():
@@ -295,6 +296,9 @@ class Panel(ScreenPanel):
                                     transient_for=widget.get_toplevel(),
                                     flags=Gtk.DialogFlags.MODAL)
         dialog.set_default_size(600, 250)
+
+        current_x, current_y = dialog.get_position()
+        dialog.move(current_x, current_y - 60)  # Moves dialog down by 100 pixels
 
         # Create a grid layout to place the buttons
         grid = Gtk.Grid()
@@ -343,6 +347,9 @@ class Panel(ScreenPanel):
                                     flags=Gtk.DialogFlags.MODAL)
         dialog.set_default_size(600, 250)
 
+        current_x, current_y = dialog.get_position()
+        dialog.move(current_x, current_y - 60)  # Moves dialog down by 100 pixels
+        
         # Create a grid layout to place the buttons
         grid = Gtk.Grid()
         grid.set_column_homogeneous(True)
