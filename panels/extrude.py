@@ -18,8 +18,8 @@ class Panel(ScreenPanel):
         self.load_filament = any("LOAD_FILAMENT" in macro.upper() for macro in macros)
         self.unload_filament = any("UNLOAD_FILAMENT" in macro.upper() for macro in macros)
 
-        self.filament = ''
-        self.nozzle = ''
+        self.filament = 'PETG-CF'
+        self.nozzle = '0.4'
 
         self.speeds = ['1', '2', '5', '25']
         self.distances = ['5', '10', '15', '25']
