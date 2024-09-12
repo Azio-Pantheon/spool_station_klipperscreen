@@ -359,7 +359,7 @@ class Panel(ScreenPanel):
             button = Gtk.Button(label=f"{size}mm")
             button.set_size_request(150, 200)
             button.connect("clicked", self.set_nozzle_size, size, dialog)
-            grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
+            grid.attach(button, i % 2, i // 2, 1, 1)  # Arrange buttons in 3 columns
 
         # Add the grid to the dialog content area and show all
         content_area = dialog.get_content_area()
