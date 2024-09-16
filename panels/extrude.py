@@ -11,15 +11,14 @@ from ks_includes.widgets.autogrid import AutoGrid
 
 class Panel(ScreenPanel):
 
-    def __init__(self, screen, title):
+    def __init__(self, screen, title, shared_printer_config):
         super().__init__(screen, title)
         self.current_extruder = self._printer.get_stat("toolhead", "extruder")
         macros = self._printer.get_config_section_list("gcode_macro ")
         self.load_filament = any("LOAD_FILAMENT" in macro.upper() for macro in macros)
         self.unload_filament = any("UNLOAD_FILAMENT" in macro.upper() for macro in macros)
 
-        self.filament = 'PETG-CF'
-        self.nozzle = '0.4'
+        self.shared_printer_config = shared_printer_config
 
         self.speeds = ['1', '2', '5', '25']
         self.distances = ['5', '10', '15', '25']
@@ -336,7 +335,7 @@ class Panel(ScreenPanel):
             if response.get("error"):
                 self._screen.show_popup_message(f"Failed to set filament type: {response['error']['message']}", level=3)
             else:
-                self.filament = filament_type
+                self.shared_printer_config.filament = filament_type
                 self._screen.show_popup_message(f"Filament type set to {filament_type}", level=1)
                 self.update_button_icons()
 
@@ -397,7 +396,7 @@ class Panel(ScreenPanel):
             if response.get("error"):
                 self._screen.show_popup_message(f"Failed to set nozzle size: {response['error']['message']}", level=3)
             else:
-                self.nozzle = nozzle_size
+                self.shared_printer_config.nozzle = nozzle_size
                 self._screen.show_popup_message(f"Nozzle size set to {nozzle_size}mm", level=1)
                 self.update_button_icons()
 
@@ -414,18 +413,18 @@ class Panel(ScreenPanel):
 
     def update_button_icons(self):
         # Create an image for filament
-        if self.filament == '':
+        if self.shared_printer_config.filament == '':
             filament_icon = Gtk.Image.new_from_icon_name("gtk-ok", Gtk.IconSize.BUTTON)
         else:
-            filament_icon = Gtk.Image.new_from_file("/home/hs3/KlipperScreen/styles/Pantheon/images/"+self.filament+".svg")
+            filament_icon = Gtk.Image.new_from_file("/home/hs3/KlipperScreen/styles/Pantheon/images/"+self.shared_printer_config.filament+".svg")
 
         self.buttons['set_filament'].set_image(filament_icon)
         self.buttons['set_filament'].set_always_show_image(True)
 
-        if self.nozzle == '':
+        if self.shared_printer_config.nozzle == '':
             nozzle_icon = Gtk.Image.new_from_icon_name("gtk-ok", Gtk.IconSize.BUTTON)
         else:
-            nozzle_icon = Gtk.Image.new_from_file("/home/hs3/KlipperScreen/styles/Pantheon/images/"+self.nozzle+".svg")
+            nozzle_icon = Gtk.Image.new_from_file("/home/hs3/KlipperScreen/styles/Pantheon/images/"+self.shared_printer_config.nozzle+".svg")
         # Create an image for nozzle
 
         self.buttons['set_nozzle'].set_image(nozzle_icon)
@@ -439,8 +438,8 @@ class Panel(ScreenPanel):
             try:
                 result = response.get("result", {})
                 value = result.get("value", {})
-                self.filament = value.get("filament_type", "")  # Set the filament type
-                self.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
+                self.shared_printer_config.filament = value.get("filament_type", "")  # Set the filament type
+                self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
                 
                 # Update the icons based on the extracted values
                 self.update_button_icons()
