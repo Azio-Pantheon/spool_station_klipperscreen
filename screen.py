@@ -74,6 +74,12 @@ def state_execute(callback):
     callback()
     return False
 
+    
+class SharedPrinterConfig:
+    def __init__(self, filament='PETG-CF', nozzle='0.4'):
+        self.filament = filament
+        self.nozzle = nozzle
+
 
 class KlipperScreen(Gtk.Window):
     """ Class for creating a screen for Klipper via HDMI """
@@ -125,6 +131,10 @@ class KlipperScreen(Gtk.Window):
         self.connect("configure_event", self.update_size)
         display = Gdk.Display.get_default()
         monitor_amount = Gdk.Display.get_n_monitors(display)
+
+        self.shared_printer_config = SharedPrinterConfig()
+
+
         try:
             mon_n = int(args.monitor)
             if not (-1 < mon_n < monitor_amount):
@@ -318,7 +328,11 @@ class KlipperScreen(Gtk.Window):
                 self._remove_current_panel()
             if panel_name not in self.panels:
                 try:
-                    self.panels[panel_name] = self._load_panel(panel).Panel(self, title, **kwargs)
+                    if panel_name in ["print", "extrude"]:
+                        # Add shared_config to kwargs if panel_name is "print" or "extrude"
+                        self.panels[panel_name] = self._load_panel(panel).Panel(self, title,self.shared_printer_config, **kwargs)
+                    else: self.panels[panel_name] = self._load_panel(panel).Panel(self, title, **kwargs)
+
                 except Exception as e:
                     self.show_error_modal(f"Unable to load panel {panel}", f"{e}\n\n{traceback.format_exc()}")
                     return

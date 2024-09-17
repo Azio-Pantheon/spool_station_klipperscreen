@@ -11,12 +11,14 @@ from ks_includes.widgets.autogrid import AutoGrid
 
 class Panel(ScreenPanel):
 
-    def __init__(self, screen, title):
+    def __init__(self, screen, title, shared_printer_config):
         super().__init__(screen, title)
         self.current_extruder = self._printer.get_stat("toolhead", "extruder")
         macros = self._printer.get_config_section_list("gcode_macro ")
         self.load_filament = any("LOAD_FILAMENT" in macro.upper() for macro in macros)
         self.unload_filament = any("UNLOAD_FILAMENT" in macro.upper() for macro in macros)
+
+        self.shared_printer_config = shared_printer_config
 
         self.speeds = ['1', '2', '5', '25']
         self.distances = ['5', '10', '15', '25']
@@ -41,6 +43,8 @@ class Panel(ScreenPanel):
             'unload': self._gtk.Button("arrow-up", _("Unload"), "color2"),
             'temperature': self._gtk.Button("heat-up", _("Temperature"), "color4"),
             'spoolman': self._gtk.Button("spoolman", "Spoolman", "color3"),
+            'set_filament': self._gtk.Button("spoolman", "Set Filament", "color3"),
+            'set_nozzle': self._gtk.Button("spoolman", "Set Nozzle Size", "color3"),
         }
         self.buttons['extrude'].connect("clicked", self.extrude, "+")
         self.buttons['retract'].connect("clicked", self.extrude, "-")
@@ -54,6 +58,9 @@ class Panel(ScreenPanel):
             "name": "Spoolman",
             "panel": "spoolman"
         })
+        self.buttons['set_filament'].connect("clicked", self.open_filament_selection)
+        self.buttons['set_nozzle'].connect("clicked", self.open_nozzle_selection)
+        self.load_filament_nozzle()
 
         xbox = Gtk.Box(homogeneous=True)
         limit = 4
@@ -89,7 +96,10 @@ class Panel(ScreenPanel):
             xbox.add(self.buttons['temperature'])
         if i < (limit - 1) and self._printer.spoolman:
             xbox.add(self.buttons['spoolman'])
-            
+
+        xbox.add(self.buttons['set_filament'])
+        xbox.add(self.buttons['set_nozzle'])
+
 
         distgrid = Gtk.Grid()
         for j, i in enumerate(self.distances):
@@ -264,6 +274,7 @@ class Panel(ScreenPanel):
             else:
                 self._screen._send_action(widget, "printer.gcode.script",
                                           {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+            self.open_filament_selection(widget)
 
     def enable_disable_fs(self, switch, gparams, name, x):
         if switch.get_active():
@@ -278,3 +289,194 @@ class Panel(ScreenPanel):
             self._screen._ws.klippy.gcode_script(f"SET_FILAMENT_SENSOR SENSOR={name} ENABLE=0")
             self.labels[x]['box'].get_style_context().remove_class("filament_sensor_empty")
             self.labels[x]['box'].get_style_context().remove_class("filament_sensor_detected")
+
+    def open_filament_selection(self, widget):
+        # List of filament types including a custom option
+        filament_types = ["PETG-CF", "PA-CF", "PA-GF", "TPU", "Custom"]
+
+        # Create the dialog for selecting filament types
+        dialog = ClickOutsideDialog(title="Select Filament Type",
+                                    transient_for=widget.get_toplevel(),
+                                    flags=Gtk.DialogFlags.MODAL)
+        dialog.set_default_size(600, 250)
+
+        current_x, current_y = dialog.get_position()
+        dialog.move(current_x, current_y - 60)  # Moves dialog down by 100 pixels
+
+        # Create a grid layout to place the buttons
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+        grid.set_column_spacing(10)
+        grid.set_row_spacing(10)
+        grid.set_margin_start(10)
+        grid.set_margin_end(10)
+        grid.set_margin_top(10)
+        grid.set_margin_bottom(10)
+
+        # Create buttons for each filament type and add them to the grid
+        for i, filament in enumerate(filament_types):
+            button = Gtk.Button(label=filament)
+            button.set_size_request(150, 200)
+            button.connect("clicked", self.set_filament_type, filament, dialog)
+            grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
+
+        # Add the grid to the dialog content area and show all
+        content_area = dialog.get_content_area()
+        content_area.add(grid)
+        dialog.show_all()
+
+    def set_filament_type(self, widget, filament_type, dialog):
+        # Close the dialog when a filament type is selected
+        dialog.destroy()
+
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(f"Failed to set filament type: {response['error']['message']}", level=3)
+            else:
+                self.shared_printer_config.filament = filament_type
+                self._screen.show_popup_message(f"Filament type set to {filament_type}", level=1)
+                self.update_button_icons()
+
+
+        # Send Moonraker requests to set the filament type, passing the callback
+        self._screen._ws.send_method(
+            "server.database.post_item", 
+            {
+                "namespace": "HS3",
+                "key": "filament_type",
+                "value": filament_type
+            },
+            handle_response  # Pass the callback here
+        )
+
+    def open_nozzle_selection(self, widget):
+        # List of nozzle sizes
+        nozzle_sizes = ["0.4", "0.5", "0.6", "0.8"]
+
+        # Create the dialog for selecting nozzle sizes
+        dialog = ClickOutsideDialog(title="Select Nozzle Size",
+                                    transient_for=widget.get_toplevel(),
+                                    flags=Gtk.DialogFlags.MODAL)
+        dialog.set_default_size(600, 250)
+
+        current_x, current_y = dialog.get_position()
+        dialog.move(current_x, current_y - 60)  # Moves dialog down by 100 pixels
+        
+        # Create a grid layout to place the buttons
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+        grid.set_column_spacing(10)
+        grid.set_row_spacing(10)
+        grid.set_margin_start(10)
+        grid.set_margin_end(10)
+        grid.set_margin_top(10)
+        grid.set_margin_bottom(10)
+
+        # Create buttons for each nozzle size and add them to the grid
+        for i, size in enumerate(nozzle_sizes):
+            button = Gtk.Button(label=f"{size}mm")
+            button.set_size_request(150, 200)
+            button.connect("clicked", self.set_nozzle_size, size, dialog)
+            grid.attach(button, i % 2, i // 2, 1, 1)  # Arrange buttons in 3 columns
+
+        # Add the grid to the dialog content area and show all
+        content_area = dialog.get_content_area()
+        content_area.add(grid)
+        dialog.show_all()
+
+    def set_nozzle_size(self, widget, nozzle_size, dialog):
+        # Close the dialog when a nozzle size is selected
+        dialog.destroy()
+
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(f"Failed to set nozzle size: {response['error']['message']}", level=3)
+            else:
+                self.shared_printer_config.nozzle = nozzle_size
+                self._screen.show_popup_message(f"Nozzle size set to {nozzle_size}mm", level=1)
+                self.update_button_icons()
+
+        # Send Moonraker requests to set the nozzle size, passing the callback
+        self._screen._ws.send_method(
+            "server.database.post_item",
+            {
+                "namespace": "HS3",
+                "key": "nozzle_size",
+                "value": nozzle_size
+            },
+            handle_response  # Pass the callback here
+        )
+
+    def update_button_icons(self):
+        # Create an image for filament
+        if self.shared_printer_config.filament == '':
+            filament_icon = Gtk.Image.new_from_icon_name("gtk-ok", Gtk.IconSize.BUTTON)
+        else:
+            filament_icon = Gtk.Image.new_from_file("/home/hs3/KlipperScreen/styles/Pantheon/images/"+self.shared_printer_config.filament+".svg")
+
+        self.buttons['set_filament'].set_image(filament_icon)
+        self.buttons['set_filament'].set_always_show_image(True)
+
+        if self.shared_printer_config.nozzle == '':
+            nozzle_icon = Gtk.Image.new_from_icon_name("gtk-ok", Gtk.IconSize.BUTTON)
+        else:
+            nozzle_icon = Gtk.Image.new_from_file("/home/hs3/KlipperScreen/styles/Pantheon/images/"+self.shared_printer_config.nozzle+".svg")
+        # Create an image for nozzle
+
+        self.buttons['set_nozzle'].set_image(nozzle_icon)
+        self.buttons['set_nozzle'].set_always_show_image(True)
+
+    def load_filament_nozzle(self):
+
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            # Extract the values from the response
+            try:
+                result = response.get("result", {})
+                value = result.get("value", {})
+                self.shared_printer_config.filament = value.get("filament_type", "")  # Set the filament type
+                self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
+                
+                # Update the icons based on the extracted values
+                self.update_button_icons()
+
+            except KeyError as e:
+                print(f"Error processing response: {e}")
+
+
+        # Send Moonraker requests to set the filament type, passing the callback
+        self._screen._ws.send_method(
+            "server.database.get_item", 
+            {
+                "namespace": "HS3",
+            },
+            handle_response  # Pass the callback here
+        )
+
+
+class ClickOutsideDialog(Gtk.Dialog):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Set dialog to modal and always above other windows (optional)
+        self.set_modal(True)
+        self.set_keep_above(True)
+
+        # Connect event to detect clicks outside the dialog
+        self.get_toplevel().connect("button-press-event", self.on_button_press)
+
+    def on_button_press(self, widget, event):
+        # Get the dialog's allocation (size) and position
+        allocation = self.get_allocation()
+        x, y = self.get_position()
+
+        # Check if the click is outside the dialog
+        if not (x <= event.x_root <= x + allocation.width and
+                y <= event.y_root <= y + allocation.height):
+            self.destroy()
+            return True  # Event handled
+        return False  # Let other handlers process the event
