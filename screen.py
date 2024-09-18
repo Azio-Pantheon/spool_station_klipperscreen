@@ -318,6 +318,9 @@ class KlipperScreen(Gtk.Window):
         return import_module(f"panels.{panel}")
 
     def show_panel(self, panel, title, remove_all=False, panel_name=None, **kwargs):
+        if self._ws is not None and self._ws.connected:
+            self.load_filament_nozzle()
+
         if panel_name is None:
             panel_name = panel
         try:
@@ -1148,7 +1151,28 @@ class KlipperScreen(Gtk.Window):
             print(f"Failed to change timezone. Error: {e}")
         #self.reload_panels()
         self.restart_ks()
+        
+    def load_filament_nozzle(self):
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            # Extract the values from the response
+            try:
+                result = response.get("result", {})
+                value = result.get("value", {})
+                self.shared_printer_config.filament = value.get("filament_type", "")  # Set the filament type
+                self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
+            except KeyError as e:
+                print(f"Error processing response: {e}")
 
+
+        # Send Moonraker requests to set the filament type, passing the callback
+        self._ws.send_method(
+            "server.database.get_item", 
+            {
+                "namespace": "HS3",
+            },
+            handle_response
+        )
 
 
 def main():
