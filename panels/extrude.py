@@ -428,7 +428,7 @@ class Panel(ScreenPanel):
 
         # Create the filament type label
         filament_label = Gtk.Label()
-        filament_label.set_markup(f'<span font="20"><b>{filament_text}</b></span>')
+        filament_label.set_markup(f'<span font="18"><b>{filament_text}</b></span>')
         filament_label.set_justify(Gtk.Justification.CENTER)
         filament_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
 
@@ -467,7 +467,7 @@ class Panel(ScreenPanel):
 
         # Create the nozzle type label
         nozzle_label = Gtk.Label()
-        nozzle_label.set_markup(f'<span font="20"><b>{nozzle_text}mm</b></span>')
+        nozzle_label.set_markup(f'<span font="18"><b>{nozzle_text}mm</b></span>')
         nozzle_label.set_justify(Gtk.Justification.CENTER)
         nozzle_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
 
