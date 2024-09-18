@@ -43,9 +43,12 @@ class Panel(ScreenPanel):
             'unload': self._gtk.Button("arrow-up", _("Unload"), "color2"),
             'temperature': self._gtk.Button("heat-up", _("Temperature"), "color4"),
             'spoolman': self._gtk.Button("spoolman", "Spoolman", "color3"),
-            'set_filament': self._gtk.Button("spoolman", "Set Filament", "color3"),
-            'set_nozzle': self._gtk.Button("spoolman", "Set Nozzle Size", "color3"),
+            'set_filament': self._gtk.Button(),
+            'set_nozzle': self._gtk.Button(),
         }
+
+        self.update_button_labels()
+
         self.buttons['extrude'].connect("clicked", self.extrude, "+")
         self.buttons['retract'].connect("clicked", self.extrude, "-")
         self.buttons['load'].connect("clicked", self.load_unload, "+")
@@ -337,7 +340,7 @@ class Panel(ScreenPanel):
             else:
                 self.shared_printer_config.filament = filament_type
                 self._screen.show_popup_message(f"Filament type set to {filament_type}", level=1)
-                self.update_button_icons()
+                self.update_button_labels()
 
 
         # Send Moonraker requests to set the filament type, passing the callback
@@ -398,7 +401,7 @@ class Panel(ScreenPanel):
             else:
                 self.shared_printer_config.nozzle = nozzle_size
                 self._screen.show_popup_message(f"Nozzle size set to {nozzle_size}mm", level=1)
-                self.update_button_icons()
+                self.update_button_labels()
 
         # Send Moonraker requests to set the nozzle size, passing the callback
         self._screen._ws.send_method(
@@ -411,24 +414,84 @@ class Panel(ScreenPanel):
             handle_response  # Pass the callback here
         )
 
-    def update_button_icons(self):
-        # Create an image for filament
+    def update_button_labels(self):
+        # Create the filament label and replace the icon
         if self.shared_printer_config.filament == '':
-            filament_icon = Gtk.Image.new_from_icon_name("gtk-ok", Gtk.IconSize.BUTTON)
+            filament_text = "No Filament"
         else:
-            filament_icon = Gtk.Image.new_from_file("/home/hs3/KlipperScreen/styles/Pantheon/images/"+self.shared_printer_config.filament+".svg")
+            filament_text = self.shared_printer_config.filament
 
-        self.buttons['set_filament'].set_image(filament_icon)
-        self.buttons['set_filament'].set_always_show_image(True)
+        # Create a vertical box to hold the labels
+        filament_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        filament_vbox.set_vexpand(True)  # Ensure the vbox expands to the full height
+        filament_vbox.set_valign(Gtk.Align.CENTER)  # Center the box vertically
 
+        # Create the filament type label
+        filament_label = Gtk.Label()
+        filament_label.set_markup(f'<span font="20"><b>{filament_text}</b></span>')
+        filament_label.set_justify(Gtk.Justification.CENTER)
+        filament_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
+
+        # Create the "Set Filament" label
+        set_filament_label = Gtk.Label(label="Set Filament")
+        set_filament_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
+
+        # Pack the labels into the vbox
+        filament_vbox.pack_start(filament_label, True, True, 0)
+        filament_vbox.pack_start(set_filament_label, True, True, 0)
+
+        # Check if the button already has a child widget
+        if self.buttons['set_filament'].get_children():
+            # Remove the existing child widget (icon or any existing content)
+            self.buttons['set_filament'].get_children()[0].destroy()
+
+        # Add the new vbox with labels
+        self.buttons['set_filament'].add(filament_vbox)
+
+        # Reapply the "color3" style class to the button
+        self.buttons['set_filament'].get_style_context().add_class("color3")
+
+        # Show the button with its new content
+        self.buttons['set_filament'].show_all()
+
+        # Create the nozzle label and replace the icon
         if self.shared_printer_config.nozzle == '':
-            nozzle_icon = Gtk.Image.new_from_icon_name("gtk-ok", Gtk.IconSize.BUTTON)
+            nozzle_text = "No Nozzle"
         else:
-            nozzle_icon = Gtk.Image.new_from_file("/home/hs3/KlipperScreen/styles/Pantheon/images/"+self.shared_printer_config.nozzle+".svg")
-        # Create an image for nozzle
+            nozzle_text = self.shared_printer_config.nozzle
 
-        self.buttons['set_nozzle'].set_image(nozzle_icon)
-        self.buttons['set_nozzle'].set_always_show_image(True)
+        # Create a vertical box to hold the labels
+        nozzle_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+        nozzle_vbox.set_vexpand(True)  # Ensure the vbox expands to the full height
+        nozzle_vbox.set_valign(Gtk.Align.CENTER)  # Center the box vertically
+
+        # Create the nozzle type label
+        nozzle_label = Gtk.Label()
+        nozzle_label.set_markup(f'<span font="20"><b>{nozzle_text}mm</b></span>')
+        nozzle_label.set_justify(Gtk.Justification.CENTER)
+        nozzle_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
+
+        # Create the "Set Nozzle Size" label
+        set_nozzle_label = Gtk.Label(label="Set Nozzle Size")
+        set_nozzle_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
+
+        # Pack the labels into the vbox
+        nozzle_vbox.pack_start(nozzle_label, True, True, 0)
+        nozzle_vbox.pack_start(set_nozzle_label, True, True, 0)
+
+        # Check if the button already has a child widget
+        if self.buttons['set_nozzle'].get_children():
+            # Remove the existing child widget (icon or any existing content)
+            self.buttons['set_nozzle'].get_children()[0].destroy()
+
+        # Add the new vbox with labels
+        self.buttons['set_nozzle'].add(nozzle_vbox)
+
+        # Reapply the "color3" style class to the button
+        self.buttons['set_nozzle'].get_style_context().add_class("color3")
+
+        # Show the button with its new content
+        self.buttons['set_nozzle'].show_all()
 
     def load_filament_nozzle(self):
 
@@ -442,7 +505,7 @@ class Panel(ScreenPanel):
                 self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
                 
                 # Update the icons based on the extracted values
-                self.update_button_icons()
+                self.update_button_labels()
 
             except KeyError as e:
                 print(f"Error processing response: {e}")
