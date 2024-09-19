@@ -341,7 +341,10 @@ class KlipperScreen(Gtk.Window):
                     return
             elif panel_name in self.panels_reinit:
                 logging.info("Reinitializing panel")
-                self.panels[panel_name].__init__(self, title, **kwargs)
+                if panel_name in ["print", "extrude"]:
+                    self.panels[panel_name].__init__(self, title,self.shared_printer_config, **kwargs)
+                else: self.panels[panel_name].__init__(self, title, **kwargs)
+
                 self.panels_reinit.remove(panel_name)
             self._cur_panels.append(panel_name)
             self.attach_panel(panel_name)
