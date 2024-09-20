@@ -1085,6 +1085,29 @@ class KlipperScreen(Gtk.Window):
         self.base_panel.content.pack_end(box, False, False, 0)
         self.base_panel.content.show_all()
 
+    def show_custom_keyboard(self, entry=None, event=None):
+        if self.keyboard is not None:
+            return self.keyboard["box"]  # Return existing keyboard if already created
+
+        # Create the keyboard container (Gtk.Box)
+        keyboard_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        keyboard_box.set_size_request(self.gtk.content_width, self.gtk.keyboard_height)
+
+        if self._config.get_main_config().getboolean("use-matchbox-keyboard", False):
+            return self._show_matchbox_keyboard(keyboard_box)
+
+        if entry is None:
+            logging.debug("Error: no entry provided for keyboard")
+            return None
+
+        keyboard_box.get_style_context().add_class("keyboard_box")
+        keyboard_box.add(Keyboard(self, self.remove_keyboard, entry=entry))
+
+        # Store the keyboard reference for future use
+        self.keyboard = {"box": keyboard_box}
+
+        return keyboard_box  # Return the keyboard box to be added to the dialog
+
     def _show_matchbox_keyboard(self, box):
         env = os.environ.copy()
         usrkbd = os.path.expanduser("~/.matchbox/keyboard.xml")
@@ -1112,6 +1135,21 @@ class KlipperScreen(Gtk.Window):
             "socket": keyboard
         }
         return
+
+    def remove_custom_keyboard(self, widget=None, event=None):
+        if self.keyboard is None:
+            return
+
+        # If a separate process was created (e.g., for an external keyboard)
+        if 'process' in self.keyboard:
+            os.kill(self.keyboard['process'].pid, SIGTERM)
+
+        # Remove the keyboard window instead of the box
+        if 'window' in self.keyboard:
+            self.keyboard['window'].destroy()  # Destroy the window to close the keyboard
+
+        # Clear the reference to the keyboard
+        self.keyboard = None
 
     def remove_keyboard(self, widget=None, event=None):
         if self.keyboard is None:

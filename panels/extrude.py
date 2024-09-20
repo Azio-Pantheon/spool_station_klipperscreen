@@ -3,7 +3,7 @@ import re
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Pango
+from gi.repository import Gtk, Pango, Gdk  
 from ks_includes.KlippyGcodes import KlippyGcodes
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.widgets.autogrid import AutoGrid
@@ -19,6 +19,7 @@ class Panel(ScreenPanel):
         self.unload_filament = any("UNLOAD_FILAMENT" in macro.upper() for macro in macros)
 
         self.shared_printer_config = shared_printer_config
+        self.keyboard_visible = False
 
         self.speeds = ['1', '2', '5', '25']
         self.distances = ['5', '10', '15', '25']
@@ -320,8 +321,12 @@ class Panel(ScreenPanel):
         # Create buttons for each filament type and add them to the grid
         for i, filament in enumerate(filament_types):
             button = Gtk.Button(label=filament)
+            button.get_style_context().add_class("color1")
             button.set_size_request(150, 200)
-            button.connect("clicked", self.set_filament_type, filament, dialog)
+            if filament == "Custom":
+                button.connect("clicked", self.open_custom_filament_dialog, dialog)
+            else:
+                button.connect("clicked", self.set_filament_type, filament, dialog)
             grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
 
         # Add the grid to the dialog content area and show all
@@ -410,6 +415,109 @@ class Panel(ScreenPanel):
                 "namespace": "HS3",
                 "key": "nozzle_size",
                 "value": nozzle_size
+            },
+            handle_response  # Pass the callback here
+        )
+
+    def open_custom_filament_dialog(self, widget, parent_dialog):
+        # Get the position of the parent dialog (Filament Selection Dialog)
+        current_x, current_y = parent_dialog.get_position()
+
+        # Close the original filament selection dialog
+        parent_dialog.destroy()
+
+        # Get the toplevel window (parent window) for the dialog
+        parent_window = widget.get_toplevel()
+        if not isinstance(parent_window, Gtk.Window):
+            parent_window = None
+
+        # Create a new dialog for custom filament input
+        custom_dialog = ClickOutsideDialog(
+            title="Enter Custom Filament Type",
+            transient_for=parent_window,  # Pass the parent window here
+            flags=Gtk.DialogFlags.MODAL
+        )
+        custom_dialog.set_default_size(400, 400)  # Adjust the height to accommodate the keyboard
+
+        # Set the position of the custom dialog to match the original dialog
+        custom_dialog.move(current_x - 170, current_y - 70)
+
+        # Connect the destroy signal to remove the keyboard when the dialog is closed
+        custom_dialog.connect("destroy", self._screen.remove_custom_keyboard)
+
+        # Create a vertical box layout for the entry and buttons
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_margin_start(20)
+        vbox.set_margin_end(20)
+        vbox.set_margin_top(20)
+        vbox.set_margin_bottom(20)
+
+        # Create a text entry field for the custom filament name
+        entry = Gtk.Entry()
+        entry.set_placeholder_text("Enter custom filament name")
+
+        # Connect the entry to show the virtual keyboard when focused
+        entry.connect("focus-in-event", lambda w, e: self._screen.show_custom_keyboard(entry))
+
+        entry.grab_focus()
+
+        vbox.pack_start(entry, True, True, 0)
+
+        # Add the keyboard below the entry field
+        keyboard = self._screen.show_custom_keyboard(entry)  # Get the keyboard widget
+        if keyboard:
+            vbox.pack_start(keyboard, False, False, 10)  # Add the keyboard to the layout
+
+        # Create a horizontal box for the confirm and cancel buttons
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        # Create the Confirm button and set its size
+        confirm_button = Gtk.Button(label="Confirm")
+        confirm_button.get_style_context().add_class("color1")
+        confirm_button.set_size_request(150, 50)  # Set width=150, height=50 to make it larger
+        confirm_button.connect("clicked", self.confirm_custom_filament, entry, custom_dialog)
+        hbox.pack_start(confirm_button, True, True, 0)  # Set expand=True to let it take space
+
+        # Create the Cancel button and set its size
+        cancel_button = Gtk.Button(label="Cancel")
+        cancel_button.get_style_context().add_class("color1")
+        cancel_button.set_size_request(150, 50)  # Set width=150, height=50 to make it larger
+        cancel_button.connect("clicked", lambda w: custom_dialog.destroy())
+        hbox.pack_start(cancel_button, True, True, 0)  # Set expand=True to let it take space
+
+        # Pack the buttons into the vertical box
+        vbox.pack_start(hbox, False, False, 0)
+
+        # Add the vertical box to the dialog content area
+        content_area = custom_dialog.get_content_area()
+        content_area.add(vbox)
+
+        # Show all elements in the dialog
+        custom_dialog.show_all()
+
+    def confirm_custom_filament(self, widget, entry, dialog):
+        # Get the custom filament name from the entry
+        custom_filament = entry.get_text()
+
+        # Close the custom filament dialog
+        dialog.destroy()
+
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(f"Failed to set custom filament type: {response['error']['message']}", level=3)
+            else:
+                self.shared_printer_config.filament = custom_filament
+                self._screen.show_popup_message(f"Custom filament type set to {custom_filament}", level=1)
+                self.update_button_labels()
+
+        # Send Moonraker requests to set the custom filament type
+        self._screen._ws.send_method(
+            "server.database.post_item", 
+            {
+                "namespace": "HS3",
+                "key": "filament_type",
+                "value": custom_filament
             },
             handle_response  # Pass the callback here
         )
@@ -532,14 +640,37 @@ class ClickOutsideDialog(Gtk.Dialog):
         # Connect event to detect clicks outside the dialog
         self.get_toplevel().connect("button-press-event", self.on_button_press)
 
+        self.add_background()
+
     def on_button_press(self, widget, event):
         # Get the dialog's allocation (size) and position
         allocation = self.get_allocation()
         x, y = self.get_position()
-
         # Check if the click is outside the dialog
         if not (x <= event.x_root <= x + allocation.width and
                 y <= event.y_root <= y + allocation.height):
             self.destroy()
             return True  # Event handled
         return False  # Let other handlers process the event
+    
+    def add_background(self):
+        # Create a CSS provider
+        css_provider = Gtk.CssProvider()
+        css_provider.load_from_data(b"""
+            .pantheon-background {
+                background-color: #1a191a;
+            }
+        """)
+
+        # Get the content area (or main container) of the dialog
+        content_area = self.get_content_area()
+
+        # Apply the red-background class to the content area
+        content_area.get_style_context().add_class('pantheon-background')
+
+        # Add the CSS provider to the screen's default display
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
