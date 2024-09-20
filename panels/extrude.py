@@ -305,7 +305,7 @@ class Panel(ScreenPanel):
         dialog.set_default_size(600, 250)
 
         current_x, current_y = dialog.get_position()
-        dialog.move(current_x, current_y - 60)  # Moves dialog down by 100 pixels
+        dialog.move(current_x, current_y - 80)  
 
         # Create a grid layout to place the buttons
         grid = Gtk.Grid()
@@ -370,7 +370,7 @@ class Panel(ScreenPanel):
         dialog.set_default_size(600, 250)
 
         current_x, current_y = dialog.get_position()
-        dialog.move(current_x, current_y - 60)  # Moves dialog down by 100 pixels
+        dialog.move(current_x, current_y - 80)  # Moves dialog down by 100 pixels
         
         # Create a grid layout to place the buttons
         grid = Gtk.Grid()
@@ -386,6 +386,7 @@ class Panel(ScreenPanel):
         # Create buttons for each nozzle size and add them to the grid
         for i, size in enumerate(nozzle_sizes):
             button = Gtk.Button(label=f"{size}mm")
+            button.get_style_context().add_class("color1")
             button.set_size_request(150, 200)
             button.connect("clicked", self.set_nozzle_size, size, dialog)
             grid.attach(button, i % 2, i // 2, 1, 1)  # Arrange buttons in 3 columns
