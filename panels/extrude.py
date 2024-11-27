@@ -310,8 +310,12 @@ class Panel(ScreenPanel):
         # Determine the state of the switch (True for active, False for inactive)
         if switch.get_active():
             wet_filament_purge_enabled = 1
+            self.labels["wet_filament_purge"]['box'].get_style_context().add_class("filament_sensor_detected")
+
         else:
             wet_filament_purge_enabled = 0
+            self.labels["wet_filament_purge"]['box'].get_style_context().remove_class("filament_sensor_detected")
+
 
         # Define a callback function to handle the response
         def handle_response(response, method, params, *args):
