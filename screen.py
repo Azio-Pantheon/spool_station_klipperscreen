@@ -836,7 +836,7 @@ class KlipperScreen(Gtk.Window):
 
     def process_update(self, *args):
         if self.panels and 'job_status' in self.panels:
-            if self.panels['job_status'].state in ["cancelled", "error", "complete"]:
+            if self.panels['job_status'].state in ["cancelled", "error", "complete","printing"]:
                 if 'main_menu' in self.panels:
                     self.panels['main_menu'].is_primed = False
                 self.panels['job_status'].process_update(*args)
