@@ -1,7 +1,7 @@
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
+from gi.repository import Gtk, GLib
 from ks_includes.screen_panel import ScreenPanel
 
 
@@ -11,6 +11,8 @@ COLORS = {
     "warning": "DarkOrange",
     "error": "FireBrick",
 }
+
+NOTIFICATION_DISPLAY_DURATION_MS = 15000  # 5000ms = 5 seconds
 
 
 def remove_newlines(msg: str) -> str:
@@ -53,6 +55,12 @@ class Panel(ScreenPanel):
             f'<span color="{color}"><b>{remove_newlines(log["message"])}</b></span>',
             -1
         )
+
+        # Reset the clear timeout if a new notification is added
+        if self.clear_timeout_id:
+            GLib.source_remove(self.clear_timeout_id)
+        self.clear_timeout_id = GLib.timeout_add(NOTIFICATION_DISPLAY_DURATION_MS, self.clear)
+
 
     def clear(self):
         self.tb.set_text("")
