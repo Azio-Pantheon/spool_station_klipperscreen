@@ -20,6 +20,7 @@ class Panel(ScreenPanel):
 
         self.shared_printer_config = shared_printer_config
         self.keyboard_visible = False
+        self.wet_filament_purge_checked = False
 
         self.speeds = ['1', '2', '5', '25']
         self.distances = ['5', '10', '15', '25']
@@ -136,7 +137,9 @@ class Panel(ScreenPanel):
 
         filament_sensors = self._printer.get_filament_sensors()
         sensors = Gtk.Grid(valign=Gtk.Align.CENTER, row_spacing=5, column_spacing=5)
-        if len(filament_sensors) > 0:
+        
+        # + 1 because we are adding wet_filament_purge here
+        if (len(filament_sensors) + 1) > 0:
             for s, x in enumerate(filament_sensors):
                 if s > limit:
                     break
@@ -153,6 +156,23 @@ class Panel(ScreenPanel):
                 self.labels[x]['box'].pack_start(self.labels[x]['switch'], False, False, 0)
                 self.labels[x]['box'].get_style_context().add_class("filament_sensor")
                 sensors.attach(self.labels[x]['box'], s, 0, 1, 1)
+
+            # Add wet_filament_purge
+            wet_filament_purge_key = "wet_filament_purge"
+            wet_filament_purge_name = "Wet Filament Purge"
+            self.labels[wet_filament_purge_key] = {
+                'label': Gtk.Label(label=self.prettify(wet_filament_purge_name), hexpand=True, halign=Gtk.Align.CENTER,
+                                ellipsize=Pango.EllipsizeMode.END),
+                'switch': Gtk.Switch(width_request=round(self._gtk.font_size * 2),
+                                    height_request=round(self._gtk.font_size)),
+                'box': Gtk.Box()
+            }
+            self.labels[wet_filament_purge_key]['switch'].connect("notify::active", self.enable_disable_wet_filament_purge,
+                                                                wet_filament_purge_name, wet_filament_purge_key)
+            self.labels[wet_filament_purge_key]['box'].pack_start(self.labels[wet_filament_purge_key]['label'], True, True, 10)
+            self.labels[wet_filament_purge_key]['box'].pack_start(self.labels[wet_filament_purge_key]['switch'], False, False, 0)
+            self.labels[wet_filament_purge_key]['box'].get_style_context().add_class("filament_sensor")
+            sensors.attach(self.labels[wet_filament_purge_key]['box'], len(filament_sensors), 0, 1, 1)
 
         grid = Gtk.Grid(column_homogeneous=True)
         grid.attach(xbox, 0, 0, 4, 1)
@@ -224,6 +244,12 @@ class Panel(ScreenPanel):
                 n = self._printer.get_tool_number(self.current_extruder)
                 self.labels["current_extruder"].set_image(self._gtk.Image(f"extruder-{n}"))
 
+        if ("toolhead" in data and "wet_filament_purge" in data["toolhead"] and
+            not self.wet_filament_purge_checked):
+            self.labels["wet_filament_purge"]['switch'].set_active(True) 
+            self.wet_filament_purge_checked = True  # Mark the check as completed
+           
+
         for x in self._printer.get_filament_sensors():
             if x in data:
                 if 'enabled' in data[x]:
@@ -279,6 +305,42 @@ class Panel(ScreenPanel):
                 self._screen._send_action(widget, "printer.gcode.script",
                                           {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
             self.open_filament_selection(widget)
+
+    def enable_disable_wet_filament_purge(self, switch, gparams, name, x):
+        # Determine the state of the switch (True for active, False for inactive)
+        if switch.get_active():
+            wet_filament_purge_enabled = 1
+        else:
+            wet_filament_purge_enabled = 0
+
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(
+                    f"Failed to set wet filament purge: {response['error']['message']}",
+                    level=3
+                )
+            else:
+                # Update shared_printer_config to reflect the new state
+                self.shared_printer_config.wet_filament_purge = wet_filament_purge_enabled
+
+                # Show a success message
+                state_str = "enabled" if wet_filament_purge_enabled else "disabled"
+                self._screen.show_popup_message(
+                    f"Wet filament purge {state_str}.",
+                    level=1
+                )
+
+        # Send Moonraker request to update the wet_filament_purge state
+        self._screen._ws.send_method(
+            "server.database.post_item",
+            {
+                "namespace": "HS3",
+                "key": "wet_filament_purge",
+                "value": wet_filament_purge_enabled
+            },
+            handle_response  # Pass the callback here
+        )
 
     def enable_disable_fs(self, switch, gparams, name, x):
         if switch.get_active():
