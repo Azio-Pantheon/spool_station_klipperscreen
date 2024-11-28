@@ -246,7 +246,11 @@ class Panel(ScreenPanel):
 
         if ("toolhead" in data and "wet_filament_purge" in data["toolhead"] and
             not self.wet_filament_purge_checked):
-            self.labels["wet_filament_purge"]['switch'].set_active(True) 
+            wet_filament_purge_value = data["toolhead"]["wet_filament_purge"]
+            if wet_filament_purge_value == 1:
+                self.labels["wet_filament_purge"]['switch'].set_active(True)
+            elif wet_filament_purge_value == 0:
+                self.labels["wet_filament_purge"]['switch'].set_active(False)
             self.wet_filament_purge_checked = True  # Mark the check as completed
            
 
