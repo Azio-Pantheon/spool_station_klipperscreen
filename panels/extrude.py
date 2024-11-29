@@ -159,7 +159,7 @@ class Panel(ScreenPanel):
 
             # Add wet_filament_purge
             wet_filament_purge_key = "wet_filament_purge"
-            wet_filament_purge_name = "Wet Filament Purge"
+            wet_filament_purge_name = "Auto Wet Filament Purge"
             self.labels[wet_filament_purge_key] = {
                 'label': Gtk.Label(label=self.prettify(wet_filament_purge_name), hexpand=True, halign=Gtk.Align.CENTER,
                                 ellipsize=Pango.EllipsizeMode.END),
