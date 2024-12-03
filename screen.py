@@ -378,12 +378,22 @@ class KlipperScreen(Gtk.Window):
 
         self.log_notification(message, level)
 
-        msg = Gtk.Button(label=f"{message}", hexpand=True, vexpand=True)
+        # Check if the message starts with "Wet Filament Purge:"
+        if message.startswith("Wet Filament Purge: "):
+            title = "Wet Filament Purge"
+            content = message[len("Wet Filament Purge: "):].strip()
+            # Use Pango Markup to combine title and content
+            formatted_message = f'<span size="30000" weight="bold">{title}</span>\n\n<span size="20000" weight="bold">{content}</span>'
+        else:
+            formatted_message = message
+
+        msg = Gtk.Button(label=f"{formatted_message}", hexpand=True, vexpand=True)
         for widget in msg.get_children():
             if isinstance(widget, Gtk.Label):
                 widget.set_line_wrap(True)
                 widget.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
                 widget.set_max_width_chars(40)
+                widget.set_markup(formatted_message)  # Use markup
         msg.connect("clicked", self.close_popup_message)
         msg.get_style_context().add_class("message_popup")
         if level == 1:
