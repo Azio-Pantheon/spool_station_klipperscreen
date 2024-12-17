@@ -48,20 +48,20 @@ class Panel(MenuPanel):
             
             self.prime_button.set_size_request(470, 188)
             # Create an overlay widget
-            overlay = Gtk.Overlay()
+            self.overlay = Gtk.Overlay()
 
             # Add the scroll with the menu to the overlay as the base layer
-            overlay.add(scroll)
+            self.overlay.add(scroll)
 
             # Add the button to the overlay; this will be rendered on top
-            overlay.add_overlay(self.prime_button)
+            self.overlay.add_overlay(self.prime_button)
 
             # Set button position relative to the overlay
             self.prime_button.set_halign(Gtk.Align.CENTER)  # Horizontal alignment (center, start, end)
             self.prime_button.set_valign(Gtk.Align.END)   # Vertical alignment (start, center, end)
 
             # Attach the overlay to the grid instead of the scroll directly
-            self.main_menu.attach(overlay, 1, 0, 1, 1)
+            self.main_menu.attach(self.overlay, 1, 0, 1, 1)
 
             self.prime_button.connect("realize", lambda widget: widget.hide())
 
@@ -294,9 +294,12 @@ class Panel(MenuPanel):
         if self._screen.vertical_mode:
             self.main_menu.remove_row(1)
             self.main_menu.attach(self.labels['menu'], 0, 1, 1, 1)
+            self.main_menu.attach(self.overlay, 1, 0, 1, 1)
+
         else:
             self.main_menu.remove_column(1)
             self.main_menu.attach(self.labels['menu'], 1, 0, 1, 1)
+            self.main_menu.attach(self.overlay, 1, 0, 1, 1)
         self.main_menu.show_all()
         self.numpad_visible = False
         self._screen.base_panel.set_control_sensitive(False, control='back')
