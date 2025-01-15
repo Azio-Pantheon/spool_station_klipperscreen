@@ -369,7 +369,7 @@ class Panel(MenuPanel):
         ]
 
         label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
-        label.set_markup(f"<b>{'Follow the instruction to prime the printer:'}</b>\n")
+        label.set_markup(f"<b>{'Follow the instruction to prime the printer:'}</b>")
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.add(label)
@@ -377,19 +377,24 @@ class Panel(MenuPanel):
         # Add another label with instructions
         instructions = """
         <b>1.</b> Clear bed of parts, prime line, and supports.\n
-        <b>2.</b> Inspect nozzle for goop, clean if goopy.\n
-        <b>3.</b> Clean bed with alcohol and clean room wipe.\n
-        <b>4.</b> Coat bed with adhesive.
+        <b>2.</b> Clean bed with alcohol and clean room wipe.\n
+        <b>3.</b> Coat bed with adhesive.\n
+        <b>4.</b> Inspect nozzle for goop, clean if goopy.
         """
 
         instructions_label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
         instructions_label.set_markup(instructions)
 
+        # Adjust line spacing using Pango attributes
+        attr_list = Pango.AttrList()
+        attr_list.insert(Pango.attr_line_height_new(0.6))  # Adjust the value for tighter spacing (e.g., 0.8 is 80% of normal spacing)
+        instructions_label.set_attributes(attr_list)
+        
         # Add the instructions label to the box
         box.add(instructions_label)
 
         # Load the GIF
-        gif_animation = GdkPixbuf.PixbufAnimation.new_from_file("/home/hs3/KlipperScreen/docs/img/neko-cat.gif")
+        gif_animation = GdkPixbuf.PixbufAnimation.new_from_file("/home/hs3/KlipperScreen/docs/img/SmallLandscape.gif")
         gif_image = Gtk.Image.new_from_animation(gif_animation)
         
         # Add the GIF to the box
