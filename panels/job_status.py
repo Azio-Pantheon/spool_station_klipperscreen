@@ -4,7 +4,7 @@ import os
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Pango
+from gi.repository import GLib, Gtk, Pango, GdkPixbuf
 from math import pi, sqrt, trunc
 from statistics import median
 from time import time
@@ -38,6 +38,7 @@ class Panel(ScreenPanel):
         self.mms2 = _("mm/s²")
         self.mms3 = _("mm³/s")
         self.status_grid = self.move_grid = self.time_grid = self.extrusion_grid = None
+        self.is_primed = True
 
         data = ['pos_x', 'pos_y', 'pos_z', 'time_left', 'duration', 'slicer_time', 'file_time',
                 'filament_time', 'est_time', 'speed_factor', 'req_speed', 'max_accel', 'extrude_factor', 'zoffset',
@@ -357,7 +358,7 @@ class Panel(ScreenPanel):
             "panel": "fine_tune", "name": _("Fine Tuning")})
         self.buttons['menu'].connect("clicked", self.close_panel)
         self.buttons['pause'].connect("clicked", self.pause)
-        self.buttons['restart'].connect("clicked", self.restart)
+        self.buttons['restart'].connect("clicked", self.handle_restart_button)
         self.buttons['resume'].connect("clicked", self.resume)
         self.buttons['save_offset_probe'].connect("clicked", self.save_offset, "probe")
         self.buttons['save_offset_endstop'].connect("clicked", self.save_offset, "endstop")
@@ -559,6 +560,11 @@ class Panel(ScreenPanel):
                     data["print_stats"]["state"],
                     msg=f'{data["print_stats"]["message"] if "message" in data["print_stats"] else ""}'
                 )
+                if data['print_stats']["state"] in ["cancelled", "error", "complete"]:
+                    self.is_primed = False
+                else:
+                    self.is_primed = True
+
             if 'filename' in data['print_stats']:
                 self.update_filename(data['print_stats']["filename"])
             if 'filament_used' in data['print_stats']:
@@ -582,6 +588,7 @@ class Panel(ScreenPanel):
                 )
             if self.state in ["printing", "paused"]:
                 self.update_time_left()
+
 
     def update_flow(self):
         if not self.flowstore:
@@ -810,3 +817,55 @@ class Panel(ScreenPanel):
             logging.debug("Cannot find file metadata. Listening for updated metadata")
             self._files.request_metadata(self.filename)
         self.show_file_thumbnail()
+
+    def prime_print(self, widget):
+
+        buttons = [
+            {"name": _("Prime"), "response": Gtk.ResponseType.OK},
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+        ]
+
+        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        label.set_markup(f"<b>{'Follow the instruction to prime the printer:'}</b>\n")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.add(label)
+
+        # Add another label with instructions
+        instructions = """
+        <b>1.</b> Clear bed of parts, prime line, and supports.\n
+        <b>2.</b> Inspect nozzle for goop, clean if goopy.\n
+        <b>3.</b> Clean bed with alcohol and clean room wipe.\n
+        <b>4.</b> Coat bed with adhesive.
+        """
+
+        instructions_label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        instructions_label.set_markup(instructions)
+
+        # Add the instructions label to the box
+        box.add(instructions_label)
+
+
+        # Load the GIF
+        gif_animation = GdkPixbuf.PixbufAnimation.new_from_file("/home/hs3/KlipperScreen/docs/img/neko-cat.gif")
+        gif_image = Gtk.Image.new_from_animation(gif_animation)
+        
+        # Add the GIF to the box
+        box.add(gif_image)
+
+        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+
+        self._gtk.Dialog(_("Prime Test"), buttons, box, self.prime_print_response)
+
+    def prime_print_response(self, dialog, response_id):
+        self._gtk.remove_dialog(dialog)
+        if response_id == Gtk.ResponseType.OK:
+            self.is_primed = True
+
+    def handle_restart_button(self, widget):
+        if self.is_primed:
+            # If ready, restart
+            self.restart(widget)
+        else:
+            # If not ready, prompt user for confirmation
+            self.prime_print(widget)

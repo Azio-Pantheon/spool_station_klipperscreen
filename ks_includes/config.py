@@ -293,6 +293,8 @@ class KlipperScreenConfig:
                     {"name": _("(UTC+13:00)"), "value": "Etc/GMT-13"}]}},
             {"confirm_estop": {"section": "main", "name": _("Confirm Emergency Stop"), "type": "binary",
                                "value": "True"}},
+            {"autoclose_popups": {"section": "main", "name": _("Auto Close Popups"), "type": "binary",
+                               "value": "False"}}
             # {"": {"section": "main", "name": _(""), "type": ""}}
         ]
 

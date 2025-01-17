@@ -78,7 +78,7 @@ class Panel(ScreenPanel):
                     b.connect("clicked", self._screen._send_action, item['method'], params)
             else:
                 b.connect("clicked", self._screen._go_to_submenu, key)
-            self.labels[key] = b
+            self.labels[key] = b 
 
     def evaluate_enable(self, enable):
         if enable == "{{ moonraker_connected }}":

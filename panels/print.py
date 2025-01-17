@@ -26,7 +26,7 @@ def format_label(widget):
 
 
 class Panel(ScreenPanel):
-    def __init__(self, screen, title):
+    def __init__(self, screen, title, shared_printer_config):
         super().__init__(screen, title)
         sortdir = self._config.get_main_config().get("print_sort_dir", "name_asc")
         sortdir = sortdir.split('_')
@@ -47,6 +47,10 @@ class Panel(ScreenPanel):
         self.list_button_size = self._gtk.img_scale * self.bts
         self.file_metadata = {}
         self.headerbox = Gtk.Box(hexpand=True, vexpand=False)
+
+        self.shared_printer_config = shared_printer_config
+
+
         n = 0
         for name, val in self.sort_items.items():
             s = self._gtk.Button(None, val, f"color{n % 4 + 1}", .5, Gtk.PositionType.RIGHT, 1)
@@ -422,8 +426,21 @@ class Panel(ScreenPanel):
                         dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
                         dialog.get_style_context().add_class('confirmPrintDialog')
                         return    
+                    # Handle filament type and nozzle size check
+                    config_verifier = self.file_metadata['config_verifier'].copy()
+                    if self.file_metadata['filament_type'] != self.shared_printer_config.filament:
+                        filament_warning = f"Warning! Filament type mismatch: expected {self.file_metadata['filament_type']},\n\t but the printer filament is set to {self.shared_printer_config.filament}"
+                        config_verifier.append(filament_warning)
+
+                    try:
+                        nozzle_diameter = float(self.shared_printer_config.nozzle)
+                        if self.file_metadata['nozzle_diameter'] != nozzle_diameter:
+                            nozzle_warning = f"Warning! Nozzle diameter mismatch: expected {self.file_metadata['nozzle_diameter']} mm,\n\t but but the printer nozzle size is set to {self.shared_printer_config.nozzle} mm"
+                            config_verifier.append(nozzle_warning)
+                    except ValueError:
+                        warningStrings.append(f"Error: Nozzle diameter '{self.shared_printer_config.nozzle}' is not a valid number.")
                     #Senario 2: Config check passed
-                    if (self.file_metadata['config_verifier'] == []):
+                    if (config_verifier == []):
                         label_text = f"{filename}\n"
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
@@ -432,9 +449,6 @@ class Panel(ScreenPanel):
                     else:
                         # Scenario 4: config_yml exists, but Config check failed
                         # Find differences between the two YAML files
-                        left_message = []
-                        right_message = []
-                        label_classes = []
                         warningStrings = []
                         cautionStrings = []
                         dangerStrings = []
@@ -442,27 +456,14 @@ class Panel(ScreenPanel):
                         label_text = f"Differences detected in {filename}"
                         label_class = ''
 
-                        for entry in self.file_metadata['config_verifier']:
+                        for entry in config_verifier:
 
                             if entry.startswith("Warning!"):
-                                sublabel_class = 'compatibility-warning'
                                 warningStrings.append(entry)
                             elif entry.startswith("Danger!"):
-                                sublabel_class = 'compatibility-danger'
                                 dangerStrings.append(entry)
                             else:
-                                sublabel_class = 'compatibility-caution'
                                 cautionStrings.append(entry)
-                            
-                            # Split the entry to separate the error message and the expected message
-                            parts = entry.split("\n\t")
-                            if len(parts) == 2:
-                                error_message = parts[0].strip()
-                                expected_message = parts[1].strip()
-                                left_message.append(error_message)
-                                right_message.append(expected_message)
-                                label_classes.append(sublabel_class)
-
                         buttons = [
                             {"name": _("Print"), "response": Gtk.ResponseType.OK},
                             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
@@ -499,7 +500,7 @@ class Panel(ScreenPanel):
                                 caution_label.set_use_markup(True)
                                 caution_label.set_xalign(0.0)
                                 caution_label.set_margin_bottom(10)
-                                grid.attach(caution_label, 0, len(warningStrings) + i + 5, 2, 1)
+                                grid.attach(caution_label, 0, len(warningStrings) + i + 6, 2, 1)
                             # Create TextView for Gcode message
                             caution_textview = Gtk.TextView()
                             caution_textview.set_editable(False)
@@ -509,7 +510,7 @@ class Panel(ScreenPanel):
 
 
                             # Add TextView widgets to the grid
-                            grid.attach(caution_textview, 0, len(warningStrings) + i + 6, 2, 1)
+                            grid.attach(caution_textview, 0, len(warningStrings) + i + 7, 2, 1)
 
                         # Create TextView widgets to display the YAML content with appropriate classes
                         # DangerStrings is not implemented

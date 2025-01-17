@@ -2,7 +2,7 @@ import logging
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, GLib, Gdk
+from gi.repository import Gtk, GLib, Gdk, Pango, GdkPixbuf
 from panels.menu import Panel as MenuPanel
 from ks_includes.widgets.heatergraph import HeaterGraph
 from ks_includes.widgets.keypad import Keypad
@@ -19,6 +19,7 @@ class Panel(MenuPanel):
         self.main_menu = Gtk.Grid(row_homogeneous=True, column_homogeneous=True, hexpand=True, vexpand=True)
         scroll = self._gtk.ScrolledWindow()
         self.numpad_visible = False
+        self.is_primed = True
 
         logging.info("### Making MainMenu")
 
@@ -33,7 +34,37 @@ class Panel(MenuPanel):
         else:
             self.labels['menu'] = self.arrangeMenuItems(items, 2, True)
             scroll.add(self.labels['menu'])
-            self.main_menu.attach(scroll, 1, 0, 1, 1)
+            #self.main_menu.attach(scroll, 1, 0, 1, 1)
+            # TODO: Need an icon for prime printer
+            self.prime_button = self._gtk.Button("complete","Prime Printer")
+            style_context = self.prime_button.get_style_context()
+
+            self.prime_button.get_style_context().add_class('print')
+
+            self.prime_button.get_style_context().add_class('color1')
+
+            self.prime_button.get_style_context().remove_class('text-button')
+            self.prime_button.connect("clicked", self.prime_print)
+            
+            self.prime_button.set_size_request(470, 188)
+            # Create an overlay widget
+            self.overlay = Gtk.Overlay()
+
+            # Add the scroll with the menu to the overlay as the base layer
+            self.overlay.add(scroll)
+
+            # Add the button to the overlay; this will be rendered on top
+            self.overlay.add_overlay(self.prime_button)
+
+            # Set button position relative to the overlay
+            self.prime_button.set_halign(Gtk.Align.CENTER)  # Horizontal alignment (center, start, end)
+            self.prime_button.set_valign(Gtk.Align.END)   # Vertical alignment (start, center, end)
+
+            # Attach the overlay to the grid instead of the scroll directly
+            self.main_menu.attach(self.overlay, 1, 0, 1, 1)
+
+            self.prime_button.connect("realize", lambda widget: widget.hide())
+
         self.content.add(self.main_menu)
 
     def update_graph_visibility(self):
@@ -263,14 +294,29 @@ class Panel(MenuPanel):
         if self._screen.vertical_mode:
             self.main_menu.remove_row(1)
             self.main_menu.attach(self.labels['menu'], 0, 1, 1, 1)
+            self.main_menu.attach(self.overlay, 1, 0, 1, 1)
+
         else:
             self.main_menu.remove_column(1)
             self.main_menu.attach(self.labels['menu'], 1, 0, 1, 1)
+            self.main_menu.attach(self.overlay, 1, 0, 1, 1)
         self.main_menu.show_all()
         self.numpad_visible = False
         self._screen.base_panel.set_control_sensitive(False, control='back')
 
     def process_update(self, action, data):
+        if "print_stats" in data:
+            if 'state' in data['print_stats']:
+                if data["print_stats"]["state"] in ["cancelled", "error", "complete"]:
+                    self.is_primed = False
+                else:
+                    self.is_primed = True
+
+        if self.is_primed:
+            self.hide_prime_button()
+        else:
+            self.show_prime_button()
+
         if action != "notify_status_update":
             return
         for x in self._printer.get_temp_devices():
@@ -314,3 +360,57 @@ class Panel(MenuPanel):
             self.hide_numpad()
             return True
         return False
+
+    def prime_print(self, widget):
+
+        buttons = [
+            {"name": _("Prime"), "response": Gtk.ResponseType.OK},
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+        ]
+
+        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        label.set_markup(f"<b>{'Follow the instruction to prime the printer:'}</b>")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.add(label)
+
+        # Add another label with instructions
+        instructions = """
+        <b>1.</b> Clear bed of parts, prime line, and supports.\n
+        <b>2.</b> Clean bed with alcohol and clean room wipe.\n
+        <b>3.</b> Coat bed with adhesive.\n
+        <b>4.</b> Inspect nozzle for goop, clean if goopy.
+        """
+
+        instructions_label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        instructions_label.set_markup(instructions)
+
+        # Adjust line spacing using Pango attributes
+        attr_list = Pango.AttrList()
+        attr_list.insert(Pango.attr_line_height_new(0.6))  # Adjust the value for tighter spacing (e.g., 0.8 is 80% of normal spacing)
+        instructions_label.set_attributes(attr_list)
+        
+        # Add the instructions label to the box
+        box.add(instructions_label)
+
+        # Load the GIF
+        gif_animation = GdkPixbuf.PixbufAnimation.new_from_file("/home/hs3/KlipperScreen/docs/img/SmallLandscape.gif")
+        gif_image = Gtk.Image.new_from_animation(gif_animation)
+        
+        # Add the GIF to the box
+        box.add(gif_image)
+
+        self._gtk.Dialog(_("Prime Test"), buttons, box, self.prime_print_response)
+
+    def prime_print_response(self, dialog, response_id):
+        self._gtk.remove_dialog(dialog)
+        if response_id == Gtk.ResponseType.OK:
+            logging.info(f"Starting prime")
+            self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
+            self.is_primed = True
+
+    def hide_prime_button(self):
+        self.prime_button.hide()
+
+    def show_prime_button(self):
+        self.prime_button.show()
