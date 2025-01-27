@@ -857,13 +857,23 @@ class Panel(ScreenPanel):
         # Add the GIF to the box
         box.add(gif_image)
 
-        self._gtk.Dialog(_("Prime Test"), buttons, box, self.prime_print_response(widget))
+        self._gtk.Dialog(_("Prime Test"), buttons, box, self.prime_print_response)
 
-    def prime_print_response(self, dialog, response_id, widget):
+    def prime_print_response(self, dialog, response_id):
         self._gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
             self.is_primed = True
-            self.restart(widget)
+            #def restart(self, widget):
+            if self.filename:
+                self.disable_button("restart")
+                if self.state == "error":
+                    self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
+                self._screen._ws.klippy.print_start(self.filename)
+                logging.info(f"Starting print: {self.filename}")
+                self.new_print()
+            else:
+                logging.info(f"Could not restart {self.filename}")
+            
 
     def handle_restart_button(self, widget):
         if self.is_primed:
