@@ -821,12 +821,12 @@ class Panel(ScreenPanel):
     def prime_print(self, widget):
 
         buttons = [
-            {"name": _("Prime"), "response": Gtk.ResponseType.OK},
+            {"name": _("Prime and Restart"), "response": Gtk.ResponseType.OK},
             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
         ]
 
         label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
-        label.set_markup(f"<b>{'Follow the instruction to prime the printer:'}</b>\n")
+        label.set_markup(f"<b>{'Follow the instruction to prime the printer:'}</b>")
 
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.add(label)
@@ -834,33 +834,36 @@ class Panel(ScreenPanel):
         # Add another label with instructions
         instructions = """
         <b>1.</b> Clear bed of parts, prime line, and supports.\n
-        <b>2.</b> Inspect nozzle for goop, clean if goopy.\n
-        <b>3.</b> Clean bed with alcohol and clean room wipe.\n
-        <b>4.</b> Coat bed with adhesive.
+        <b>2.</b> Clean bed with alcohol and clean room wipe.\n
+        <b>3.</b> Coat bed with adhesive.\n
+        <b>4.</b> Inspect nozzle for goop, clean if goopy.
         """
 
         instructions_label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
         instructions_label.set_markup(instructions)
 
+        # Adjust line spacing using Pango attributes
+        attr_list = Pango.AttrList()
+        attr_list.insert(Pango.attr_line_height_new(0.6))  # Adjust the value for tighter spacing (e.g., 0.8 is 80% of normal spacing)
+        instructions_label.set_attributes(attr_list)
+        
         # Add the instructions label to the box
         box.add(instructions_label)
 
-
         # Load the GIF
-        gif_animation = GdkPixbuf.PixbufAnimation.new_from_file("/home/hs3/KlipperScreen/docs/img/neko-cat.gif")
+        gif_animation = GdkPixbuf.PixbufAnimation.new_from_file("/home/hs3/KlipperScreen/docs/img/SmallLandscape.gif")
         gif_image = Gtk.Image.new_from_animation(gif_animation)
         
         # Add the GIF to the box
         box.add(gif_image)
 
-        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+        self._gtk.Dialog(_("Prime Test"), buttons, box, self.prime_print_response(widget))
 
-        self._gtk.Dialog(_("Prime Test"), buttons, box, self.prime_print_response)
-
-    def prime_print_response(self, dialog, response_id):
+    def prime_print_response(self, dialog, response_id, widget):
         self._gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
             self.is_primed = True
+            self.restart(widget)
 
     def handle_restart_button(self, widget):
         if self.is_primed:
