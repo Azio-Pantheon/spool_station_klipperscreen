@@ -59,8 +59,8 @@ class Panel(ScreenPanel):
             extgrid.attach(self.labels[f"edelta{i}"], j, 0, 1, 1)
         grid = Gtk.Grid(column_homogeneous=True)
 
-        self.labels['z+'] = self._gtk.Button("z-farther", "Bed Up", "color1")  #Z+
-        self.labels['z-'] = self._gtk.Button("z-closer", "Bed Down", "color1")     #Z-
+        self.labels['z-'] = self._gtk.Button("z-farther", "Bed Up", "color1")  #Z+
+        self.labels['z+'] = self._gtk.Button("z-closer", "Bed Down", "color1")     #Z-
         self.labels['zoffset'] = self._gtk.Button("refresh", '  0.00' + _("mm"),
                                                   "color1", self.bts, Gtk.PositionType.LEFT, 1)
         self.labels['speed+'] = self._gtk.Button("speed+", _("Speed +"), "color3")
@@ -73,8 +73,8 @@ class Panel(ScreenPanel):
         self.labels['extrudefactor'] = self._gtk.Button("refresh", "  100%",
                                                         "color4", self.bts, Gtk.PositionType.LEFT, 1)
         if self._screen.vertical_mode:
-            grid.attach(self.labels['z+'], 0, 0, 1, 1)
-            grid.attach(self.labels['z-'], 1, 0, 1, 1)
+            grid.attach(self.labels['z-'], 0, 0, 1, 1)
+            grid.attach(self.labels['z+'], 1, 0, 1, 1)
             grid.attach(self.labels['zoffset'], 2, 0, 1, 1)
             grid.attach(zgrid, 0, 1, 3, 1)
             grid.attach(self.labels['speed-'], 0, 2, 1, 1)
@@ -87,8 +87,8 @@ class Panel(ScreenPanel):
             grid.attach(extgrid, 0, 5, 3, 1)
         else:
             grid.attach(self.labels['zoffset'], 0, 0, 1, 1)
-            grid.attach(self.labels['z+'], 0, 1, 1, 1)
-            grid.attach(self.labels['z-'], 0, 2, 1, 1)
+            grid.attach(self.labels['z-'], 0, 1, 1, 1)
+            grid.attach(self.labels['z+'], 0, 2, 1, 1)
             grid.attach(zgrid, 0, 3, 1, 1)
             grid.attach(self.labels['speedfactor'], 1, 0, 1, 1)
             grid.attach(self.labels['speed+'], 1, 1, 1, 1)
@@ -99,9 +99,9 @@ class Panel(ScreenPanel):
             grid.attach(self.labels['extrude-'], 2, 2, 1, 1)
             grid.attach(extgrid, 2, 3, 1, 1)
 
-        self.labels['z+'].connect("clicked", self.change_babystepping, "+")
-        self.labels['zoffset'].connect("clicked", self.change_babystepping, "reset")
         self.labels['z-'].connect("clicked", self.change_babystepping, "-")
+        self.labels['zoffset'].connect("clicked", self.change_babystepping, "reset")
+        self.labels['z+'].connect("clicked", self.change_babystepping, "+")
         self.labels['speed+'].connect("clicked", self.change_speed, "+")
         self.labels['speedfactor'].connect("clicked", self.change_speed, "reset")
         self.labels['speed-'].connect("clicked", self.change_speed, "-")
