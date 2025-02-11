@@ -1229,6 +1229,33 @@ class KlipperScreen(Gtk.Window):
             handle_response
         )
 
+    def toggle_enable_prime(self, switch):
+        enable_prime = 1 if switch else 0
+
+        # Define a callback to handle Moonraker's response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self.show_popup_message(
+                    f"Failed to update enable_prime: {response['error']['message']}",
+                    level=3
+                )
+            else:
+                # Update config state
+                self.shared_printer_config.enable_prime = enable_prime
+                state_str = "enabled" if enable_prime else "disabled"
+                self.show_popup_message(f"Prime function {state_str}.", level=1)
+
+        # Send new state to Moonraker
+        self._ws.send_method(
+            "server.database.post_item",
+            {
+                "namespace": "HS3", 
+                "key": "enable_prime",  
+                "value": enable_prime
+            },
+            handle_response  # Callback function
+        )
+
 
 def main():
     minimum = (3, 7)
