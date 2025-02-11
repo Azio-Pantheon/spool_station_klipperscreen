@@ -314,8 +314,8 @@ class Panel(MenuPanel):
 
         # updating HS3 machine states
         if "machine_state" in data:
-            if 'is_purging' in data['machine_state']:
-                    self._screen.shared_printer_config.enable_prime = data['machine_state']['is_purging']
+            if 'enable_prime' in data['machine_state']:
+                    self._screen.shared_printer_config.enable_prime = data['machine_state']['enable_prime']
 
         if self._screen.shared_printer_config.enable_prime == 1:
             if self.is_primed:
