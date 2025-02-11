@@ -312,10 +312,18 @@ class Panel(MenuPanel):
                 else:
                     self.is_primed = True
 
-        if self.is_primed:
-            self.hide_prime_button()
+        # updating HS3 machine states
+        if "machine_state" in data:
+            if 'is_purging' in data['machine_state']:
+                    self._screen.shared_printer_config.enable_prime = data['machine_state']['is_purging']
+
+        if self._screen.shared_printer_config.enable_prime == 1:
+            if self.is_primed:
+                self.hide_prime_button()
+            else:
+                self.show_prime_button()
         else:
-            self.show_prime_button()
+            self.hide_prime_button()
 
         if action != "notify_status_update":
             return

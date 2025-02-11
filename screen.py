@@ -50,6 +50,7 @@ PRINTER_BASE_STATUS_OBJECTS = [
     'firmware_retraction',
     'exclude_object',
     'manual_probe',
+    'machine_state'
 ]
 
 klipperscreendir = pathlib.Path(__file__).parent.resolve()
@@ -76,9 +77,10 @@ def state_execute(callback):
 
     
 class SharedPrinterConfig:
-    def __init__(self, filament='PETG-CF', nozzle='0.4'):
+    def __init__(self, filament='PETG-CF', nozzle='0.4', enable_prime = 1):
         self.filament = filament
         self.nozzle = nozzle
+        self.enable_prime = enable_prime
 
 
 class KlipperScreen(Gtk.Window):
@@ -286,6 +288,7 @@ class KlipperScreen(Gtk.Window):
                 "exclude_object": ["current_object", "objects", "excluded_objects"],
                 "manual_probe": ['is_active'],
                 "screws_tilt_adjust": ['results', 'error'],
+                "machine_state": ['is_purging', 'enable_prime']
             }
         }
         for extruder in self.printer.get_tools():
@@ -319,7 +322,7 @@ class KlipperScreen(Gtk.Window):
 
     def show_panel(self, panel, title, remove_all=False, panel_name=None, **kwargs):
         if self._ws is not None and self._ws.connected:
-            self.load_filament_nozzle()
+            self.load_machine_state()
 
         if panel_name is None:
             panel_name = panel
@@ -1203,7 +1206,7 @@ class KlipperScreen(Gtk.Window):
         #self.reload_panels()
         self.restart_ks()
         
-    def load_filament_nozzle(self):
+    def load_machine_state(self):
         # Define a callback function to handle the response
         def handle_response(response, method, params, *args):
             # Extract the values from the response
@@ -1212,6 +1215,7 @@ class KlipperScreen(Gtk.Window):
                 value = result.get("value", {})
                 self.shared_printer_config.filament = value.get("filament_type", "")  # Set the filament type
                 self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
+                self.shared_printer_config.enable_prime = value.get("enable_prime", 1)      # Set the nozzle size
             except KeyError as e:
                 print(f"Error processing response: {e}")
 
