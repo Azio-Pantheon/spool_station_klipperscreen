@@ -35,7 +35,6 @@ class Panel(MenuPanel):
             self.labels['menu'] = self.arrangeMenuItems(items, 2, True)
             scroll.add(self.labels['menu'])
             #self.main_menu.attach(scroll, 1, 0, 1, 1)
-            # TODO: Need an icon for prime printer
             self.prime_button = self._gtk.Button("complete","Prime Printer")
             style_context = self.prime_button.get_style_context()
 
