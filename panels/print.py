@@ -344,6 +344,11 @@ class Panel(ScreenPanel):
             self._screen._ws.klippy.print_start(filename)
 
     def confirm_compatible_print(self, widget, filename):
+        # Check if its purging, if purging, notify the user.
+        if self._screen.shared_printer_config.is_purging == 1:
+            self._screen.show_popup_message(("Wet Filament Purge: Purging wet filament, print will start shortly"), level=1)
+            return
+
         cautionGenericText = 'Print Quality may be degraded'
         warningGenericText = 'Running this file may damage your machine'
         self.file_metadata = self._files.get_file_info(filename)
@@ -746,5 +751,20 @@ class Panel(ScreenPanel):
             params
         )
         self.back()
+
+    def process_update(self, action, data):
+        if "print_stats" in data:
+            if 'state' in data['print_stats']:
+                if data["print_stats"]["state"] in ["cancelled", "error", "complete"]:
+                    self.is_primed = False
+                else:
+                    self.is_primed = True
+
+        # updating HS3 machine states
+        if "machine_state" in data:
+            if 'enable_prime' in data['machine_state']:
+                    self._screen.shared_printer_config.enable_prime = data['machine_state']['enable_prime']
+            if 'is_purging' in data['machine_state']:
+                    self._screen.shared_printer_config.is_purging = data['machine_state']['is_purging']
 
 

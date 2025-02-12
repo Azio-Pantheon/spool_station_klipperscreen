@@ -77,10 +77,11 @@ def state_execute(callback):
 
     
 class SharedPrinterConfig:
-    def __init__(self, filament='PETG-CF', nozzle='0.4', enable_prime = 1):
+    def __init__(self, filament='PETG-CF', nozzle='0.4', enable_prime = 1, is_purging = 0):
         self.filament = filament
         self.nozzle = nozzle
         self.enable_prime = enable_prime
+        self.is_purging = is_purging
 
 
 class KlipperScreen(Gtk.Window):

@@ -316,7 +316,8 @@ class Panel(MenuPanel):
         if "machine_state" in data:
             if 'enable_prime' in data['machine_state']:
                     self._screen.shared_printer_config.enable_prime = data['machine_state']['enable_prime']
-
+            if 'is_purging' in data['machine_state']:
+                    self._screen.shared_printer_config.is_purging = data['machine_state']['is_purging']
         if self._screen.shared_printer_config.enable_prime == 1:
             if self.is_primed:
                 self.hide_prime_button()
