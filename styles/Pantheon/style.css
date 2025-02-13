@@ -226,7 +226,7 @@ textview .time {
 
 .message_popup_warning,
 .message_popup_warning button {
-    background-color:  @pantheon-beige-corrected;
+    background-color:  orange;
 }
 
 .message_popup_error,
