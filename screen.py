@@ -50,6 +50,7 @@ PRINTER_BASE_STATUS_OBJECTS = [
     'firmware_retraction',
     'exclude_object',
     'manual_probe',
+    'machine_state'
 ]
 
 klipperscreendir = pathlib.Path(__file__).parent.resolve()
@@ -76,9 +77,11 @@ def state_execute(callback):
 
     
 class SharedPrinterConfig:
-    def __init__(self, filament='PETG-CF', nozzle='0.4'):
+    def __init__(self, filament='PETG-CF', nozzle='0.4', enable_prime = 1, is_purging = 0):
         self.filament = filament
         self.nozzle = nozzle
+        self.enable_prime = enable_prime
+        self.is_purging = is_purging
 
 
 class KlipperScreen(Gtk.Window):
@@ -286,6 +289,7 @@ class KlipperScreen(Gtk.Window):
                 "exclude_object": ["current_object", "objects", "excluded_objects"],
                 "manual_probe": ['is_active'],
                 "screws_tilt_adjust": ['results', 'error'],
+                "machine_state": ['is_purging', 'enable_prime']
             }
         }
         for extruder in self.printer.get_tools():
@@ -319,7 +323,7 @@ class KlipperScreen(Gtk.Window):
 
     def show_panel(self, panel, title, remove_all=False, panel_name=None, **kwargs):
         if self._ws is not None and self._ws.connected:
-            self.load_filament_nozzle()
+            self.load_machine_state()
 
         if panel_name is None:
             panel_name = panel
@@ -1203,7 +1207,7 @@ class KlipperScreen(Gtk.Window):
         #self.reload_panels()
         self.restart_ks()
         
-    def load_filament_nozzle(self):
+    def load_machine_state(self):
         # Define a callback function to handle the response
         def handle_response(response, method, params, *args):
             # Extract the values from the response
@@ -1212,6 +1216,7 @@ class KlipperScreen(Gtk.Window):
                 value = result.get("value", {})
                 self.shared_printer_config.filament = value.get("filament_type", "")  # Set the filament type
                 self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
+                self.shared_printer_config.enable_prime = value.get("enable_prime", 1)      # Set the nozzle size
             except KeyError as e:
                 print(f"Error processing response: {e}")
 
@@ -1223,6 +1228,33 @@ class KlipperScreen(Gtk.Window):
                 "namespace": "HS3",
             },
             handle_response
+        )
+
+    def toggle_enable_prime(self, switch):
+        enable_prime = 1 if switch else 0
+
+        # Define a callback to handle Moonraker's response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self.show_popup_message(
+                    f"Failed to update enable_prime: {response['error']['message']}",
+                    level=3
+                )
+            else:
+                # Update config state
+                self.shared_printer_config.enable_prime = enable_prime
+                state_str = "enabled" if enable_prime else "disabled"
+                self.show_popup_message(f"Prime function {state_str}.", level=1)
+
+        # Send new state to Moonraker
+        self._ws.send_method(
+            "server.database.post_item",
+            {
+                "namespace": "HS3", 
+                "key": "enable_prime",  
+                "value": enable_prime
+            },
+            handle_response  # Callback function
         )
 
 
