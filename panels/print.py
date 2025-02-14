@@ -346,7 +346,7 @@ class Panel(ScreenPanel):
     def confirm_compatible_print(self, widget, filename):
         # Check if its purging, if purging, notify the user.
         if self._screen.shared_printer_config.is_purging == 1:
-            self._screen.show_popup_message(("Wet Filament Purge: Purging wet filament, print will start shortly"), level=1)
+            self._screen.show_popup_message(("Wet Filament Purge: Purging wet filament. A print has already been started, it will begin after the purge."), level=2)
             return
         # Check whether to show prime dialogue or not
         if (self._screen.shared_printer_config.enable_prime == 1) and (not self.is_primed):
