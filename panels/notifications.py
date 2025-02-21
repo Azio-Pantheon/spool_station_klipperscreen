@@ -54,6 +54,7 @@ class Panel(ScreenPanel):
             -1
         )
 
+
     def clear(self):
         self.tb.set_text("")
 

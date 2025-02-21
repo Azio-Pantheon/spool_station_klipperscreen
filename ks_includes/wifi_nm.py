@@ -55,7 +55,7 @@ class WifiManager:
 
     def _ap_added(self, nm, interface, signal, access_point):
         with suppress(NetworkManager.ObjectVanished):
-            access_point.OnPropertiesChanged(self._ap_prop_changed)
+            with suppress(AttributeError): access_point.OnPropertiesChanged(self._ap_prop_changed)
             ssid = self._add_ap(access_point)
             for cb in self._callbacks['scan_results']:
                 args = (cb, [ssid], [])
@@ -122,8 +122,7 @@ class WifiManager:
     def _add_ap(self, ap):
         ssid = ap.Ssid
         if ssid == "":
-            ssid = _("Hidden") + f" {self.hidden_ssid_index}"
-            self.hidden_ssid_index += 1
+            return ""
         self.ssid_by_path[ap.object_path] = ssid
         self.path_by_ssid[ssid] = ap.object_path
         self.visible_networks[ap.object_path] = ap

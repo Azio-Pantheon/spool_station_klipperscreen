@@ -1,6 +1,10 @@
 import logging
 import os
 import gi
+import yaml
+from io import StringIO
+
+
 import subprocess
 import threading
 
@@ -10,6 +14,7 @@ from datetime import datetime
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
 from ks_includes.widgets.flowboxchild_extended import PrintListItem
+
 
 def format_label(widget):
     label = find_widget(widget, Gtk.Label)
@@ -21,7 +26,7 @@ def format_label(widget):
 
 
 class Panel(ScreenPanel):
-    def __init__(self, screen, title):
+    def __init__(self, screen, title, shared_printer_config):
         super().__init__(screen, title)
         sortdir = self._config.get_main_config().get("print_sort_dir", "name_asc")
         sortdir = sortdir.split('_')
@@ -40,8 +45,12 @@ class Panel(ScreenPanel):
         self.loading = False
         self.cur_directory = 'gcodes'
         self.list_button_size = self._gtk.img_scale * self.bts
-
+        self.file_metadata = {}
         self.headerbox = Gtk.Box(hexpand=True, vexpand=False)
+
+        self.shared_printer_config = shared_printer_config
+
+
         n = 0
         for name, val in self.sort_items.items():
             s = self._gtk.Button(None, val, f"color{n % 4 + 1}", .5, Gtk.PositionType.RIGHT, 1)
@@ -100,6 +109,8 @@ class Panel(ScreenPanel):
         self.content.add(self.main)
         self.set_loading(True)
         self._screen._ws.klippy.get_dir_info(self.load_files, self.cur_directory)
+
+
 
     def switch_view_mode(self, widget):
         self.list_mode ^= True
@@ -170,12 +181,12 @@ class Panel(ScreenPanel):
             row.attach(rename, 2, 1, 1, 1)
             row.attach(delete, 3, 1, 1, 1)
             if 'filename' in item:
-                icon.connect("clicked", self.confirm_print, path)
+                icon.connect("clicked", self.confirm_compatible_print, path)
                 image_args = (path, icon, self.thumbsize, False, "file")
                 delete.connect("clicked", self.confirm_delete_file, f"gcodes/{path}")
                 rename.connect("clicked", self.show_rename, f"gcodes/{path}")
                 action = self._gtk.Button("print", style="color3")
-                action.connect("clicked", self.confirm_print, path)
+                action.connect("clicked", self.confirm_compatible_print, path)
                 action.set_hexpand(False)
                 action.set_vexpand(False)
                 action.set_halign(Gtk.Align.END)
@@ -197,7 +208,7 @@ class Panel(ScreenPanel):
         else:  # Thumbnail view
             icon = self._gtk.Button(label=basename)
             if 'filename' in item:
-                icon.connect("clicked", self.confirm_print, path)
+                icon.connect("clicked", self.confirm_compatible_print, path)
                 image_args = (path, icon, self.thumbsize, False, "file")
             elif 'dirname' in item:
                 icon.connect("clicked", self.change_dir, path)
@@ -333,6 +344,272 @@ class Panel(ScreenPanel):
         self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
 
     def confirm_print_response(self, dialog, response_id, filename):
+        self._gtk.remove_dialog(dialog)
+        if response_id == Gtk.ResponseType.OK:
+            logging.info(f"Starting print: {filename}")
+            self._screen._ws.klippy.print_start(filename)
+
+    def confirm_compatible_print(self, widget, filename):
+        cautionGenericText = 'Print Quality may be degraded'
+        warningGenericText = 'Running this file may damage your machine'
+        self.file_metadata = self._files.get_file_info(filename)
+        # if printer config doesnt exist, then skip all config checks
+        if (('enable_config_verifier' not in self.file_metadata) or self.file_metadata['enable_config_verifier']):
+            #Load the yml config from gcode
+            label_text = ""
+            label_class = ""
+            # if the slicer is not PantheonSlicer then show a warning
+            if (self.file_metadata['slicer'] == 'PantheonSlicer'):
+                buttons = []
+                if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
+                    # Scenario 1: config_yml doesn't exist for pantheonslicer
+                    label_text = Gtk.Label(label=f"<b><span size='20480'>Caution: {cautionGenericText} </span></b>")  
+                    label_text.get_style_context().add_class('compatibilityMessage-caution')
+                    label_text.set_use_markup(True)
+                    label_text.set_xalign(0.0)
+
+                    caution_label = Gtk.Label(label="Out of date PantheonSlicer Detected. Please update PantheonSlicer and the profiles")
+                    caution_label.set_use_markup(True)
+                    caution_label.set_xalign(0.0)
+
+                    buttons = [
+                        {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                        {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                    ]
+
+                    grid = Gtk.Grid()
+                    grid.set_column_homogeneous(True)
+                    label_text.set_margin_bottom(10)
+                    grid.attach(label_text, 0, 0, 1, 1)
+                    grid.attach(caution_label, 0, 1, 1, 1)
+
+                    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                    box.add(grid)
+
+
+                    height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
+                    pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                    if pixbuf is not None:
+                        image = Gtk.Image.new_from_pixbuf(pixbuf)
+                        box.add(image)
+
+
+                    dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                    dialog.get_style_context().add_class('confirmPrintDialog')
+                    return
+                else:
+                    if ('config_verifier' not in self.file_metadata):
+                        label_text = Gtk.Label(label=f"<b><span size='20480'>Caution: {cautionGenericText}</span></b>")  
+                        label_text.get_style_context().add_class('compatibilityMessage-caution')
+                        label_text.set_use_markup(True)
+                        label_text.set_xalign(0.0)
+
+                        warning_label = Gtk.Label(label=f"Gcode_yml format is invalid. Please try update PantheonSlicer profiles or check gcode content")
+                        warning_label.set_use_markup(True)
+                        warning_label.set_xalign(0.0)
+                        
+                        buttons = [
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
+
+                        grid = Gtk.Grid()
+                        grid.set_column_homogeneous(True)
+                        label_text.set_margin_bottom(10)
+                        grid.attach(label_text, 0, 0, 1, 1)
+                        grid.attach(warning_label, 0, 1, 1, 1)
+
+                        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                        box.add(grid)
+
+                        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
+                        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                        if pixbuf is not None:
+                            image = Gtk.Image.new_from_pixbuf(pixbuf)
+                            box.add(image)
+
+
+                        dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                        dialog.get_style_context().add_class('confirmPrintDialog')
+                        return    
+                    # Handle filament type and nozzle size check
+                    config_verifier = self.file_metadata['config_verifier'].copy()
+                    if self.file_metadata['filament_type'] != self.shared_printer_config.filament:
+                        filament_warning = f"Warning! Filament type mismatch: expected {self.file_metadata['filament_type']},\n\t but the printer filament is set to {self.shared_printer_config.filament}"
+                        config_verifier.append(filament_warning)
+
+                    try:
+                        nozzle_diameter = float(self.shared_printer_config.nozzle)
+                        if self.file_metadata['nozzle_diameter'] != nozzle_diameter:
+                            nozzle_warning = f"Warning! Nozzle diameter mismatch: expected {self.file_metadata['nozzle_diameter']} mm,\n\t but but the printer nozzle size is set to {self.shared_printer_config.nozzle} mm"
+                            config_verifier.append(nozzle_warning)
+                    except ValueError:
+                        warningStrings.append(f"Error: Nozzle diameter '{self.shared_printer_config.nozzle}' is not a valid number.")
+                    #Senario 2: Config check passed
+                    if (config_verifier == []):
+                        label_text = f"{filename}\n"
+                        buttons = [
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
+                    else:
+                        # Scenario 4: config_yml exists, but Config check failed
+                        # Find differences between the two YAML files
+                        warningStrings = []
+                        cautionStrings = []
+                        dangerStrings = []
+
+                        label_text = f"Differences detected in {filename}"
+                        label_class = ''
+
+                        for entry in config_verifier:
+
+                            if entry.startswith("Warning!"):
+                                warningStrings.append(entry)
+                            elif entry.startswith("Danger!"):
+                                dangerStrings.append(entry)
+                            else:
+                                cautionStrings.append(entry)
+                        buttons = [
+                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                        ]
+
+                        
+                        # Create a grid to display differences side by side
+                        grid = Gtk.Grid()
+                        grid.set_column_homogeneous(True)
+
+                        # Create TextView widgets to display the YAML content with appropriate classes
+                        for i in range(len(warningStrings)):
+                            if (i==0):
+                                warning_label = Gtk.Label(label=f'<b><span size="20480">Warning: {warningGenericText}</span></b>')
+                                warning_label.get_style_context().add_class('compatibilityMessage-warning')
+                                warning_label.set_use_markup(True)
+                                warning_label.set_xalign(0.0)
+                                warning_label.set_margin_bottom(10)
+                                grid.attach(warning_label, 0, i + 1, 2, 1)
+                            # Create TextView for Gcode message
+                            warning_textview = Gtk.TextView()
+                            warning_textview.set_editable(False)
+                            warning_buffer = warning_textview.get_buffer()
+                            warning_buffer.set_text(warningStrings[i])
+                            warning_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+                            # Add TextView widgets to the grid
+                            grid.attach(warning_textview, 0, len(warningStrings) + i + 2, 2, 1)
+
+                        # Create TextView widgets to display the YAML content with appropriate classes
+                        for i in range(len(cautionStrings)):
+                            if (i==0):
+                                caution_label = Gtk.Label(label=f'<b><span size="20480">Caution: {cautionGenericText}</span></b>')
+                                caution_label.get_style_context().add_class('compatibilityMessage-caution')
+                                caution_label.set_use_markup(True)
+                                caution_label.set_xalign(0.0)
+                                caution_label.set_margin_bottom(10)
+                                grid.attach(caution_label, 0, len(warningStrings) + i + 6, 2, 1)
+                            # Create TextView for Gcode message
+                            caution_textview = Gtk.TextView()
+                            caution_textview.set_editable(False)
+                            caution_buffer = caution_textview.get_buffer()
+                            caution_buffer.set_text(cautionStrings[i])
+                            caution_textview.set_wrap_mode(Gtk.WrapMode.WORD)
+
+
+                            # Add TextView widgets to the grid
+                            grid.attach(caution_textview, 0, len(warningStrings) + i + 7, 2, 1)
+
+                        # Create TextView widgets to display the YAML content with appropriate classes
+                        # DangerStrings is not implemented
+
+                    # Create label and add the appropriate style class
+                    label = Gtk.Label(label=label_text)
+                
+                if label_class:
+                    label.get_style_context().add_class(label_class)
+                # Create a ScrolledWindow and set maximum height
+                scrolled_window = Gtk.ScrolledWindow()
+                scrolled_window.set_hexpand(True)
+                scrolled_window.set_vexpand(True)
+                scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+                scrolled_window.set_max_content_height(300)  # Set the maximum height as needed
+
+                if 'grid' in locals():
+                    grid.attach(label, 0, 0, 2, 1)
+                    scrolled_window.add(grid)
+                else:
+                    scrolled_window .add(label)
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                box.add(scrolled_window)
+                #box.get_style_context().add_class('confirmPrintDialog')
+
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .35
+                pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                if pixbuf is not None:
+                    image = Gtk.Image.new_from_pixbuf(pixbuf)
+                    box.add(image)
+
+
+                dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                dialog.get_style_context().add_class('confirmPrintDialog')
+                # Adding background color
+                #dialog.get_style_context().add_class('dialog-compatibilityMessage-warning')
+            else:
+                # Scenario 5: not PantheonSlicer
+                label_text = Gtk.Label(label=f"<b><span size='20480'>Warning: {warningGenericText}</span></b>")  
+                label_text.get_style_context().add_class('compatibilityMessage-warning')
+                label_text.set_use_markup(True)
+                label_text.set_xalign(0.0)
+
+                warning_label = Gtk.Label(label=f"Third-party slicer detected: {self.file_metadata['slicer']} ")
+                warning_label.set_use_markup(True)
+                warning_label.set_xalign(0.0)
+                
+                buttons = [
+                    {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                ]
+
+                grid = Gtk.Grid()
+                grid.set_column_homogeneous(True)
+                label_text.set_margin_bottom(10)
+                grid.attach(label_text, 0, 0, 1, 1)
+                grid.attach(warning_label, 0, 1, 1, 1)
+
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                box.add(grid)
+
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
+                pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                if pixbuf is not None:
+                    image = Gtk.Image.new_from_pixbuf(pixbuf)
+                    box.add(image)
+
+
+                dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
+                dialog.get_style_context().add_class('confirmPrintDialog')
+        else:
+            buttons = [
+                {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+            ]
+
+            label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+            label.set_markup(f"<b>{filename}</b>\n")
+
+            box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            box.add(label)
+
+            height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+            pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+            if pixbuf is not None:
+                image = Gtk.Image.new_from_pixbuf(pixbuf)
+                box.add(image)
+
+            dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
+            dialog.get_style_context().add_class('confirmPrintDialog')
+
+
+    def confirm_compatible_print_response(self, dialog, response_id, filename):
         self._gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
             logging.info(f"Starting print: {filename}")
@@ -507,3 +784,5 @@ class Panel(ScreenPanel):
             params
         )
         self.back()
+
+

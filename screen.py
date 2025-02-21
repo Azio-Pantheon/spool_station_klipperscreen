@@ -74,6 +74,12 @@ def state_execute(callback):
     callback()
     return False
 
+    
+class SharedPrinterConfig:
+    def __init__(self, filament='PETG-CF', nozzle='0.4'):
+        self.filament = filament
+        self.nozzle = nozzle
+
 
 class KlipperScreen(Gtk.Window):
     """ Class for creating a screen for Klipper via HDMI """
@@ -125,6 +131,10 @@ class KlipperScreen(Gtk.Window):
         self.connect("configure_event", self.update_size)
         display = Gdk.Display.get_default()
         monitor_amount = Gdk.Display.get_n_monitors(display)
+
+        self.shared_printer_config = SharedPrinterConfig()
+
+
         try:
             mon_n = int(args.monitor)
             if not (-1 < mon_n < monitor_amount):
@@ -268,7 +278,7 @@ class KlipperScreen(Gtk.Window):
                 "print_stats": ["print_duration", "total_duration", "filament_used", "filename", "state", "message",
                                 "info"],
                 "toolhead": ["homed_axes", "estimated_print_time", "print_time", "position", "extruder",
-                             "max_accel", "minimum_cruise_ratio", "max_velocity", "square_corner_velocity"],
+                             "max_accel", "minimum_cruise_ratio", "max_velocity", "square_corner_velocity","wet_filament_purge","last_print_time"],
                 "virtual_sdcard": ["file_position", "is_active", "progress"],
                 "webhooks": ["state", "state_message"],
                 "firmware_retraction": ["retract_length", "retract_speed", "unretract_extra_length", "unretract_speed"],
@@ -308,6 +318,9 @@ class KlipperScreen(Gtk.Window):
         return import_module(f"panels.{panel}")
 
     def show_panel(self, panel, title, remove_all=False, panel_name=None, **kwargs):
+        if self._ws is not None and self._ws.connected:
+            self.load_filament_nozzle()
+
         if panel_name is None:
             panel_name = panel
         try:
@@ -318,13 +331,20 @@ class KlipperScreen(Gtk.Window):
                 self._remove_current_panel()
             if panel_name not in self.panels:
                 try:
-                    self.panels[panel_name] = self._load_panel(panel).Panel(self, title, **kwargs)
+                    if panel_name in ["print", "extrude"]:
+                        # Add shared_config to kwargs if panel_name is "print" or "extrude"
+                        self.panels[panel_name] = self._load_panel(panel).Panel(self, title,self.shared_printer_config, **kwargs)
+                    else: self.panels[panel_name] = self._load_panel(panel).Panel(self, title, **kwargs)
+
                 except Exception as e:
                     self.show_error_modal(f"Unable to load panel {panel}", f"{e}\n\n{traceback.format_exc()}")
                     return
             elif panel_name in self.panels_reinit:
                 logging.info("Reinitializing panel")
-                self.panels[panel_name].__init__(self, title, **kwargs)
+                if panel_name in ["print", "extrude"]:
+                    self.panels[panel_name].__init__(self, title,self.shared_printer_config, **kwargs)
+                else: self.panels[panel_name].__init__(self, title, **kwargs)
+
                 self.panels_reinit.remove(panel_name)
             self._cur_panels.append(panel_name)
             self.attach_panel(panel_name)
@@ -358,12 +378,22 @@ class KlipperScreen(Gtk.Window):
 
         self.log_notification(message, level)
 
-        msg = Gtk.Button(label=f"{message}", hexpand=True, vexpand=True)
+        # Check if the message starts with "Wet Filament Purge:"
+        if message.startswith("Wet Filament Purge: "):
+            title = "Wet Filament Purge"
+            content = message[len("Wet Filament Purge: "):].strip()
+            # Use Pango Markup to combine title and content
+            formatted_message = f'<span size="30000" weight="bold">{title}</span>\n\n<span size="20000" weight="bold">{content}</span>'
+        else:
+            formatted_message = message
+
+        msg = Gtk.Button(label=f"{formatted_message}", hexpand=True, vexpand=True)
         for widget in msg.get_children():
             if isinstance(widget, Gtk.Label):
                 widget.set_line_wrap(True)
                 widget.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
                 widget.set_max_width_chars(40)
+                widget.set_markup(formatted_message)  # Use markup
         msg.connect("clicked", self.close_popup_message)
         msg.get_style_context().add_class("message_popup")
         if level == 1:
@@ -808,6 +838,15 @@ class KlipperScreen(Gtk.Window):
         self.process_update(action, data)
 
     def process_update(self, *args):
+        if self.panels and 'job_status' in self.panels:
+            if self.panels['job_status'].state in ["cancelled", "error", "complete","printing"]:
+                if 'main_menu' in self.panels:
+                    self.panels['main_menu'].is_primed = False
+                self.panels['job_status'].process_update(*args)
+            else:
+                if 'main_menu' in self.panels:
+                    self.panels['main_menu'].is_primed = True
+
         self.base_panel.process_update(*args)
         if self._cur_panels and hasattr(self.panels[self._cur_panels[-1]], "process_update"):
             self.panels[self._cur_panels[-1]].process_update(*args)
@@ -1049,6 +1088,29 @@ class KlipperScreen(Gtk.Window):
         self.base_panel.content.pack_end(box, False, False, 0)
         self.base_panel.content.show_all()
 
+    def show_custom_keyboard(self, entry=None, event=None):
+        if self.keyboard is not None:
+            return self.keyboard["box"]  # Return existing keyboard if already created
+
+        # Create the keyboard container (Gtk.Box)
+        keyboard_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        keyboard_box.set_size_request(self.gtk.content_width, self.gtk.keyboard_height)
+
+        if self._config.get_main_config().getboolean("use-matchbox-keyboard", False):
+            return self._show_matchbox_keyboard(keyboard_box)
+
+        if entry is None:
+            logging.debug("Error: no entry provided for keyboard")
+            return None
+
+        keyboard_box.get_style_context().add_class("keyboard_box")
+        keyboard_box.add(Keyboard(self, self.remove_keyboard, entry=entry))
+
+        # Store the keyboard reference for future use
+        self.keyboard = {"box": keyboard_box}
+
+        return keyboard_box  # Return the keyboard box to be added to the dialog
+
     def _show_matchbox_keyboard(self, box):
         env = os.environ.copy()
         usrkbd = os.path.expanduser("~/.matchbox/keyboard.xml")
@@ -1076,6 +1138,21 @@ class KlipperScreen(Gtk.Window):
             "socket": keyboard
         }
         return
+
+    def remove_custom_keyboard(self, widget=None, event=None):
+        if self.keyboard is None:
+            return
+
+        # If a separate process was created (e.g., for an external keyboard)
+        if 'process' in self.keyboard:
+            os.kill(self.keyboard['process'].pid, SIGTERM)
+
+        # Remove the keyboard window instead of the box
+        if 'window' in self.keyboard:
+            self.keyboard['window'].destroy()  # Destroy the window to close the keyboard
+
+        # Clear the reference to the keyboard
+        self.keyboard = None
 
     def remove_keyboard(self, widget=None, event=None):
         if self.keyboard is None:
@@ -1118,7 +1195,28 @@ class KlipperScreen(Gtk.Window):
             print(f"Failed to change timezone. Error: {e}")
         #self.reload_panels()
         self.restart_ks()
+        
+    def load_filament_nozzle(self):
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            # Extract the values from the response
+            try:
+                result = response.get("result", {})
+                value = result.get("value", {})
+                self.shared_printer_config.filament = value.get("filament_type", "")  # Set the filament type
+                self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
+            except KeyError as e:
+                print(f"Error processing response: {e}")
 
+
+        # Send Moonraker requests to set the filament type, passing the callback
+        self._ws.send_method(
+            "server.database.get_item", 
+            {
+                "namespace": "HS3",
+            },
+            handle_response
+        )
 
 
 def main():

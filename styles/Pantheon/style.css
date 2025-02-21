@@ -7,7 +7,6 @@
 @define-color pantheon-base00 #657b83;
 @define-color pantheon-base01  #586e75;
 @define-color pantheon-base02 #073642;
-@define-color pantheon-yellow #b58900;
 @define-color pantheon-orange #cb4b16;
 @define-color pantheon-red #dc322f;
 @define-color pantheon-magenta #d33682;
@@ -22,7 +21,7 @@
 @define-color pantheon-peach #f0d3b0;
 @define-color pantheon-pink #f69894;
 @define-color pantheon-blue #4f4c81;
-@define-color pantheon-yellow #fff3b5;
+@define-color pantheon-yellow #dada0b;
 @define-color pantheon-grey #414042;
 
 * {
@@ -280,7 +279,11 @@ textview .time {
 }
 
 .dialog-warning {
-    border-bottom-color: @olarized-yellow;
+    border-bottom-color: orange;
+}
+
+.dialog-caution {
+    border-bottom-color: @pantheon-yellow;
 }
 
 .dialog-info {
@@ -297,4 +300,35 @@ textview .time {
 
 .dialog-primary {
      border-bottom-color: @pantheon-beige-corrected;
+}
+
+.compatibility-warning {
+    color: orange;
+}
+
+.compatibility-danger {
+    color: red;
+}
+
+.compatibility-caution {
+    color: @pantheon-yellow;
+}
+
+.compatibilityMessage-warning {
+    background-color: orange;
+    color: black;
+}
+
+.compatibilityMessage-danger {
+    background-color: red;
+    color: black;
+}
+
+.compatibilityMessage-caution {
+    background-color: @pantheon-yellow;
+    color: black;
+}
+
+.confirmPrintDialog{
+    background-color: @pantheon-background-grey;
 }
