@@ -357,12 +357,34 @@ class Panel(ScreenPanel):
         warningGenericText = 'Running this file may damage your machine'
         self.file_metadata = self._files.get_file_info(filename)
         # if printer config doesnt exist, then skip all config checks
-        if (('enable_config_verifier' not in self.file_metadata) or self.file_metadata['enable_config_verifier']):
+        if isinstance(self.file_metadata, dict) and self.file_metadata.get('enable_config_verifier', True):
             #Load the yml config from gcode
             label_text = ""
             label_class = ""
             # if the slicer is not PantheonSlicer then show a warning
-            if (self.file_metadata['slicer'] == 'PantheonSlicer'):
+            slicer = self.file_metadata.get('slicer')
+            if slicer is None:
+                buttons = [
+                    {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                ]
+
+                label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+                label.set_markup(f"<b>{filename}</b>\n")
+
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                box.add(label)
+
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+                pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                if pixbuf is not None:
+                    image = Gtk.Image.new_from_pixbuf(pixbuf)
+                    box.add(image)
+
+                dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
+                dialog.get_style_context().add_class('confirmPrintDialog')
+                return
+            if slicer == 'PantheonSlicer':
                 buttons = []
                 if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
                     # Scenario 1: config_yml doesn't exist for pantheonslicer
@@ -563,7 +585,7 @@ class Panel(ScreenPanel):
                 label_text.set_use_markup(True)
                 label_text.set_xalign(0.0)
 
-                warning_label = Gtk.Label(label=f"Third-party slicer detected: {self.file_metadata['slicer']} ")
+                warning_label = Gtk.Label(label=f"Third-party slicer detected: {slicer} ")
                 warning_label.set_use_markup(True)
                 warning_label.set_xalign(0.0)
                 
