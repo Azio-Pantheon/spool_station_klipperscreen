@@ -876,9 +876,12 @@ class Panel(ScreenPanel):
             
 
     def handle_restart_button(self, widget):
-        if self.is_primed:
-            # If ready, restart
-            self.restart(widget)
+        if self._screen.shared_printer_config.enable_prime == 1:
+            if self.is_primed:
+                # If ready, restart
+                self.restart(widget)
+            else:
+                # If not ready, prompt user for confirmation
+                self.prime_print(widget)
         else:
-            # If not ready, prompt user for confirmation
-            self.prime_print(widget)
+            self.restart(widget)

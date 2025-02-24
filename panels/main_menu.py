@@ -35,7 +35,6 @@ class Panel(MenuPanel):
             self.labels['menu'] = self.arrangeMenuItems(items, 2, True)
             scroll.add(self.labels['menu'])
             #self.main_menu.attach(scroll, 1, 0, 1, 1)
-            # TODO: Need an icon for prime printer
             self.prime_button = self._gtk.Button("complete","Prime Printer")
             style_context = self.prime_button.get_style_context()
 
@@ -312,10 +311,19 @@ class Panel(MenuPanel):
                 else:
                     self.is_primed = True
 
-        if self.is_primed:
-            self.hide_prime_button()
+        # updating HS3 machine states
+        if "machine_state" in data:
+            if 'enable_prime' in data['machine_state']:
+                    self._screen.shared_printer_config.enable_prime = data['machine_state']['enable_prime']
+            if 'is_purging' in data['machine_state']:
+                    self._screen.shared_printer_config.is_purging = data['machine_state']['is_purging']
+        if self._screen.shared_printer_config.enable_prime == 1:
+            if self.is_primed:
+                self.hide_prime_button()
+            else:
+                self.show_prime_button()
         else:
-            self.show_prime_button()
+            self.hide_prime_button()
 
         if action != "notify_status_update":
             return

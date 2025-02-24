@@ -9,7 +9,7 @@ import subprocess
 import threading
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Pango
+from gi.repository import Gtk, Pango, GdkPixbuf
 from datetime import datetime
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
@@ -350,16 +350,47 @@ class Panel(ScreenPanel):
             self._screen._ws.klippy.print_start(filename)
 
     def confirm_compatible_print(self, widget, filename):
+        # Check if its purging, if purging, notify the user.
+        if self._screen.shared_printer_config.is_purging == 1:
+            self._screen.show_popup_message(("Wet Filament Purge: Purging wet filament. A print has already been started, it will begin after the purge."), level=2)
+            return
+        # Check whether to show prime dialogue or not
+        if (self._screen.shared_printer_config.enable_prime == 1) and (not self.is_primed):
+            self.prime_print(widget)
+            return
+
         cautionGenericText = 'Print Quality may be degraded'
         warningGenericText = 'Running this file may damage your machine'
         self.file_metadata = self._files.get_file_info(filename)
         # if printer config doesnt exist, then skip all config checks
-        if (('enable_config_verifier' not in self.file_metadata) or self.file_metadata['enable_config_verifier']):
+        if isinstance(self.file_metadata, dict) and self.file_metadata.get('enable_config_verifier', True):
             #Load the yml config from gcode
             label_text = ""
             label_class = ""
             # if the slicer is not PantheonSlicer then show a warning
-            if (self.file_metadata['slicer'] == 'PantheonSlicer'):
+            slicer = self.file_metadata.get('slicer')
+            if slicer is None:
+                buttons = [
+                    {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                ]
+
+                label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+                label.set_markup(f"<b>{filename}</b>\n")
+
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                box.add(label)
+
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+                pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                if pixbuf is not None:
+                    image = Gtk.Image.new_from_pixbuf(pixbuf)
+                    box.add(image)
+
+                dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
+                dialog.get_style_context().add_class('confirmPrintDialog')
+                return
+            if slicer == 'PantheonSlicer':
                 buttons = []
                 if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
                     # Scenario 1: config_yml doesn't exist for pantheonslicer
@@ -560,7 +591,7 @@ class Panel(ScreenPanel):
                 label_text.set_use_markup(True)
                 label_text.set_xalign(0.0)
 
-                warning_label = Gtk.Label(label=f"Third-party slicer detected: {self.file_metadata['slicer']} ")
+                warning_label = Gtk.Label(label=f"Third-party slicer detected: {slicer} ")
                 warning_label.set_use_markup(True)
                 warning_label.set_xalign(0.0)
                 
@@ -784,5 +815,68 @@ class Panel(ScreenPanel):
             params
         )
         self.back()
+
+    def process_update(self, action, data):
+        if "print_stats" in data:
+            if 'state' in data['print_stats']:
+                if data["print_stats"]["state"] in ["cancelled", "error", "complete"]:
+                    self.is_primed = False
+                else:
+                    self.is_primed = True
+
+        # updating HS3 machine states
+        if "machine_state" in data:
+            if 'enable_prime' in data['machine_state']:
+                    self._screen.shared_printer_config.enable_prime = data['machine_state']['enable_prime']
+            if 'is_purging' in data['machine_state']:
+                    self._screen.shared_printer_config.is_purging = data['machine_state']['is_purging']
+
+    def prime_print(self, widget):
+
+        buttons = [
+            {"name": _("Prime"), "response": Gtk.ResponseType.OK},
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+        ]
+
+        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        label.set_markup(f"<b>{'Follow the instruction to prime the printer:'}</b>")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.add(label)
+
+        # Add another label with instructions
+        instructions = """
+        <b>1.</b> Clear bed of parts, prime line, and supports.\n
+        <b>2.</b> Clean bed with alcohol and clean room wipe.\n
+        <b>3.</b> Coat bed with adhesive.\n
+        <b>4.</b> Inspect nozzle for goop, clean if goopy.
+        """
+
+        instructions_label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        instructions_label.set_markup(instructions)
+
+        # Adjust line spacing using Pango attributes
+        attr_list = Pango.AttrList()
+        attr_list.insert(Pango.attr_line_height_new(0.6))  # Adjust the value for tighter spacing (e.g., 0.8 is 80% of normal spacing)
+        instructions_label.set_attributes(attr_list)
+        
+        # Add the instructions label to the box
+        box.add(instructions_label)
+
+        # Load the GIF
+        gif_animation = GdkPixbuf.PixbufAnimation.new_from_file("/home/hs3/KlipperScreen/docs/img/SmallLandscape.gif")
+        gif_image = Gtk.Image.new_from_animation(gif_animation)
+        
+        # Add the GIF to the box
+        box.add(gif_image)
+
+        self._gtk.Dialog(_("Prime Test"), buttons, box, self.prime_print_response)
+
+    def prime_print_response(self, dialog, response_id):
+        self._gtk.remove_dialog(dialog)
+        if response_id == Gtk.ResponseType.OK:
+            logging.info(f"Starting prime")
+            self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
+            self.is_primed = True
 
 
