@@ -208,8 +208,12 @@ class Panel(ScreenPanel):
         else:  # Thumbnail view
             icon = self._gtk.Button(label=basename)
             if 'filename' in item:
-                icon.connect("clicked", self.confirm_compatible_print, path)
+                if path.startswith('flash_drive'):
+                    icon.connect("clicked", self.confirm_move_gcode, path)
+                else:
+                    icon.connect("clicked", self.confirm_compatible_print, path)
                 image_args = (path, icon, self.thumbsize, False, "file")
+
             elif 'dirname' in item:
                 icon.connect("clicked", self.change_dir, path)
                 image_args = (None, icon, self.thumbsize, False, "folder")
@@ -879,4 +883,44 @@ class Panel(ScreenPanel):
             self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
             self.is_primed = True
 
+    def confirm_move_gcode(self, widget, filename):
+        self.file_metadata = self._files.get_file_info(filename)
 
+        buttons = [
+            {"name": _("Copy to Printer"), "response": Gtk.ResponseType.OK},
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+        ]
+
+        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        label.set_markup(f"<b>{filename}</b>\n")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.add(label)
+
+        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+        if pixbuf is not None:
+            image = Gtk.Image.new_from_pixbuf(pixbuf)
+            box.add(image)
+
+        dialog = self._gtk.Dialog(_("Copy to Printer") + f' {filename}', buttons, box, self.confirm_move_gcode_response, self.cur_directory, filename, widget)
+        dialog.get_style_context().add_class('confirm_move_gcode')
+
+
+    def confirm_move_gcode_response(self, dialog, response_id, cur_directory, filename, widget):
+        self._gtk.remove_dialog(dialog)
+        if response_id == Gtk.ResponseType.OK:
+            self.move_to_gcodes(cur_directory, filename, widget)
+
+    def move_to_gcodes(self, cur_directory, filename, widget):
+        basename = os.path.basename(filename)
+        source = os.path.join(cur_directory, basename)
+        destination = os.path.join('gcodes', basename)
+        self._screen.show_popup_message(f'Copying {basename} to {source}', level=1)
+
+        params = {"source": source, "dest": destination}
+        self._screen._send_action(
+            widget,
+            "server.files.move",
+            params
+        )
