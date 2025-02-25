@@ -181,12 +181,18 @@ class Panel(ScreenPanel):
             row.attach(rename, 2, 1, 1, 1)
             row.attach(delete, 3, 1, 1, 1)
             if 'filename' in item:
-                icon.connect("clicked", self.confirm_compatible_print, path)
+                if path.startswith('flash_drive'):
+                    icon.connect("clicked", self.confirm_move_gcode, path)
+                    action = self._gtk.Button("usb download", style="color3")
+                    action.connect("clicked", self.confirm_move_gcode, path)
+                else:
+                    icon.connect("clicked", self.confirm_compatible_print, path)
+                    action = self._gtk.Button("print", style="color3")
+                    action.connect("clicked", self.confirm_compatible_print, path)
+
                 image_args = (path, icon, self.thumbsize, False, "file")
                 delete.connect("clicked", self.confirm_delete_file, f"gcodes/{path}")
                 rename.connect("clicked", self.show_rename, f"gcodes/{path}")
-                action = self._gtk.Button("print", style="color3")
-                action.connect("clicked", self.confirm_compatible_print, path)
                 action.set_hexpand(False)
                 action.set_vexpand(False)
                 action.set_halign(Gtk.Align.END)
