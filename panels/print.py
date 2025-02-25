@@ -68,12 +68,6 @@ class Panel(ScreenPanel):
         n += 1
         self.headerbox.add(self.refresh)
 
-        self.pullusb = self._gtk.Button("usb download", style=f"color{n % 4 + 1}", scale=self.bts*2)
-        self.pullusb.get_style_context().add_class("buttons_slim")
-        self.pullusb.connect('clicked', self._pull_gcodes_from_usb)
-        n += 1
-        self.headerbox.add(self.pullusb)
-
         self.switch_mode = self._gtk.Button("fine-tune", style=f"color{n % 4 + 1}", scale=self.bts)
         self.switch_mode.get_style_context().add_class("buttons_slim")
         self.switch_mode.connect('clicked', self.switch_view_mode)
@@ -731,38 +725,6 @@ class Panel(ScreenPanel):
         for child in self.flowbox.get_children():
             self.flowbox.remove(child)
         self._screen._ws.klippy.get_dir_info(self.load_files, self.cur_directory)
-
-    def _pull_gcodes_from_usb(self, widget=None):
-        thread = threading.Thread(target=self.run_usb_script)
-        thread.start()
-
-
-    def run_usb_script(self, widget=None):   
-        self._gtk.Button_busy(self.pullusb, True)
-        for control in ('back', 'home'):
-            self._screen.base_panel.set_control_sensitive(False, control=control) 
-        try:
-            # Run the script and capture output and errors
-            result = subprocess.run(['/home/hs3/hs3-data/utilities/usb_mount.sh'], capture_output=True, text=True)
-            
-            # Check the output
-            if result.returncode == 1:
-                self._screen.show_popup_message(f"Failed to mount the usb device \nPlease make sure the usb drive is plugged in and try again", 3)
-            elif result.returncode == 2:
-                self._screen.show_popup_message(f"Failed to copy files\nPlease try again", 3)
-            elif result.returncode == 3:
-                self._screen.show_popup_message(f"Failed to unmount the usb device", 3)
-            else:  
-                for line in result.stdout.splitlines():
-                    if "number of files copied:" in line:
-                        self._screen.show_popup_message(f"{line}\n***Please wait for the thumbnail(s) to load before printing.***\n***Loading may take couple minutes depending on the file sizes***", 1)
-        except Exception as e:
-            self._screen.show_popup_message(f"Failed to run script: {str(e)}")
-
-        self._gtk.Button_busy(self.pullusb, False)
-        for control in ('back', 'home'):
-            self._screen.base_panel.set_control_sensitive(True, control=control) 
-        self._refresh_files()
 
     def set_loading(self, loading):
         self.loading = loading
