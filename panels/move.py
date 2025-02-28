@@ -3,7 +3,7 @@ import logging
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Pango
+from gi.repository import Gtk, Pango, Gdk
 from ks_includes.KlippyGcodes import KlippyGcodes
 from ks_includes.screen_panel import ScreenPanel
 
@@ -98,9 +98,17 @@ class Panel(ScreenPanel):
         self.drawing_area.connect("draw", self.on_draw)
         # Initialize toolhead position
         self.toolhead_position = {'x': 0, 'y': 0}
+
         box = Gtk.Box()
+        box.set_size_request(150, 150)
         box.pack_start(self.drawing_area, False, False, 0)
 
+        #Enable touch events
+        self.drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
+        self.drawing_area.connect("button-press-event", self.on_grid_press)
+        self.drawing_area.connect("button-release-event", self.on_grid_release)
+
+        
         for p in ('pos_x', 'pos_y', 'pos_z'):
             self.labels[p] = Gtk.Label()
         self.labels['move_dist'] = Gtk.Label(label=_("Move Distance (mm)"))
@@ -112,12 +120,12 @@ class Panel(ScreenPanel):
         bottomgrid.attach(self.labels['pos_z'], 2, 0, 1, 1)
         #bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
 
-        self.labels['move_menu'] = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
-        self.labels['move_menu'].attach(grid, 0, 0, 1, 3)
-        self.labels['move_menu'].attach(bottomgrid, 0, 3, 1, 1)
+        self.labels['move_menu'] = Gtk.Grid(row_homogeneous=False, column_homogeneous=True)
+        #self.labels['move_menu'].attach(grid, 0, 0, 1, 3)
+        #self.labels['move_menu'].attach(bottomgrid, 0, 3, 1, 1)
         #self.labels['move_menu'].attach(distgrid, 0, 4, 1, 1)
         
-        self.labels['move_menu'].attach(box, 0, 4, 1, 3)
+        self.labels['move_menu'].attach(box, 0, 0, 1, 3)
 
         self.content.add(self.labels['move_menu'])
 
@@ -260,10 +268,10 @@ class Panel(ScreenPanel):
 
     def on_draw(self, widget, cr):
         # Get the dimensions of the drawing area
-        #width = widget.get_allocated_width()
-        #height = widget.get_allocated_height()
-        width = 150
-        height = 150
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+        #width = 150
+        #height = 150
         # Draw the grid
         self.draw_grid(cr, width, height)
 
@@ -311,3 +319,48 @@ class Panel(ScreenPanel):
 
         # Redraw the drawing area
         self.drawing_area.queue_draw()
+
+    def on_touch_event(self, widget, event):
+        # Extract touch coordinates
+        x = event.x
+        y = event.y
+
+        if event.type == Gdk.EventType.TOUCH_BEGIN:
+            # User has touched the screen; draw the toolhead icon at this position
+            self.draw_toolhead_at_position(x, y, color=(0, 0, 1))  # Blue color
+        elif event.type == Gdk.EventType.TOUCH_END:
+            # User has lifted their finger; issue the move command
+            self.issue_move_command(x, y)
+
+        return True
+
+    def draw_toolhead_at_position(self, x, y, color):
+        # Update the toolhead position
+        self.toolhead_position['x'] = x
+        self.toolhead_position['y'] = y
+
+        # Redraw the drawing area
+        self.drawing_area.queue_draw()
+
+        # In your on_draw method, use the updated toolhead_position and color
+        # to render the toolhead icon appropriately
+    def issue_move_command(self, x, y):
+        # Construct the G-code command for absolute movement
+        #script = f"G90\nG0 X{x:.2f} Y{y:.2f} F1500"  # G90 for absolute positioning
+
+        # Send the command to the printer
+        #self._screen._send_action(None, "printer.gcode.script", {"script": script})
+        self._screen.show_popup_message((f"Move to {x},{y}"), level=2)
+
+    def on_grid_press(self, widget, event):
+        """Handles user press on the drawing area."""
+        if event.button == 1:  # Left mouse button or touch
+            self.last_press_x = event.x
+            self.last_press_y = event.y
+
+    def on_grid_release(self, widget, event):
+        """Handles user release on the drawing area and issues move command."""
+        if event.button == 1:  # Left mouse button or touch
+            # Convert screen coordinates to toolhead coordinates
+            #x, y = self.map_coordinates_to_toolhead(event.x, event.y)
+            self.issue_move_command(event.x, event.y)
