@@ -79,6 +79,7 @@ class Panel(ScreenPanel):
         grid.attach(self.buttons['home'], 0, 0, 1, 1)
         grid.attach(self.buttons['motors_off'], 2, 0, 1, 1)
 
+        '''
         distgrid = Gtk.Grid()
         for j, i in enumerate(self.distances):
             self.labels[i] = self._gtk.Button(label=i)
@@ -89,6 +90,16 @@ class Panel(ScreenPanel):
             if i == self.distance:
                 ctx.add_class("horizontal_togglebuttons_active")
             distgrid.attach(self.labels[i], j, 0, 1, 1)
+        '''
+
+        # Create the drawing area
+        self.drawing_area = Gtk.DrawingArea()
+        self.drawing_area.set_size_request(150, 150)  # Set desired size
+        self.drawing_area.connect("draw", self.on_draw)
+        # Initialize toolhead position
+        self.toolhead_position = {'x': 0, 'y': 0}
+        box = Gtk.Box()
+        box.pack_start(self.drawing_area, False, False, 0)
 
         for p in ('pos_x', 'pos_y', 'pos_z'):
             self.labels[p] = Gtk.Label()
@@ -99,12 +110,14 @@ class Panel(ScreenPanel):
         bottomgrid.attach(self.labels['pos_x'], 0, 0, 1, 1)
         bottomgrid.attach(self.labels['pos_y'], 1, 0, 1, 1)
         bottomgrid.attach(self.labels['pos_z'], 2, 0, 1, 1)
-        bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
+        #bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
 
         self.labels['move_menu'] = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
         self.labels['move_menu'].attach(grid, 0, 0, 1, 3)
         self.labels['move_menu'].attach(bottomgrid, 0, 3, 1, 1)
-        self.labels['move_menu'].attach(distgrid, 0, 4, 1, 1)
+        #self.labels['move_menu'].attach(distgrid, 0, 4, 1, 1)
+        
+        self.labels['move_menu'].attach(box, 0, 4, 1, 3)
 
         self.content.add(self.labels['move_menu'])
 
@@ -163,6 +176,10 @@ class Panel(ScreenPanel):
                     self.labels['pos_z'].set_text(f"Z: {data['gcode_move']['gcode_position'][2]:.2f}")
             else:
                 self.labels['pos_z'].set_text("Z: ?")
+
+        gcode_position = data.get("gcode_move", {}).get("gcode_position", [None, None, None])
+        if gcode_position[0] is not None and gcode_position[1] is not None:
+            self.update_toolhead_position(gcode_position[0], gcode_position[1])
 
     def change_distance(self, widget, distance):
         logging.info(f"### Distance {distance}")
@@ -240,3 +257,57 @@ class Panel(ScreenPanel):
         disname = self._screen._config.get_menu_name("move", name)
         menuitems = self._screen._config.get_menu_items("move", name)
         self._screen.show_panel("menu", disname, items=menuitems)
+
+    def on_draw(self, widget, cr):
+        # Get the dimensions of the drawing area
+        #width = widget.get_allocated_width()
+        #height = widget.get_allocated_height()
+        width = 150
+        height = 150
+        # Draw the grid
+        self.draw_grid(cr, width, height)
+
+        # Draw the toolhead position
+        self.draw_toolhead(cr, width, height)
+
+    def draw_grid(self, cr, width, height):
+        # Set the grid color
+        cr.set_source_rgb(0.9, 0.9, 0.9)  # Light gray
+
+        # Define grid spacing
+        grid_spacing = 20  # pixels
+
+        # Draw vertical lines
+        for x in range(0, width, grid_spacing):
+            cr.move_to(x, 0)
+            cr.line_to(x, height)
+            cr.stroke()
+
+        # Draw horizontal lines
+        for y in range(0, height, grid_spacing):
+            cr.move_to(0, y)
+            cr.line_to(width, y)
+            cr.stroke()
+
+    def draw_toolhead(self, cr, width, height):
+        # Map toolhead position to drawing area coordinates
+        x = self.toolhead_position['x']
+        y = self.toolhead_position['y']
+
+        # Set the toolhead color
+        cr.set_source_rgb(1.0, 0, 0)  # Red
+
+        # Define toolhead marker size
+        marker_size = 20  # pixels
+
+        # Draw the toolhead as a rectangle
+        cr.rectangle(x - marker_size / 2, y - marker_size / 2, marker_size, marker_size)
+        cr.fill()
+
+    def update_toolhead_position(self, x, y):
+        # Update the toolhead position
+        self.toolhead_position['x'] = x
+        self.toolhead_position['y'] = y
+
+        # Redraw the drawing area
+        self.drawing_area.queue_draw()
