@@ -79,7 +79,6 @@ class Panel(ScreenPanel):
         grid.attach(self.buttons['home'], 0, 0, 1, 1)
         grid.attach(self.buttons['motors_off'], 2, 0, 1, 1)
 
-        '''
         distgrid = Gtk.Grid()
         for j, i in enumerate(self.distances):
             self.labels[i] = self._gtk.Button(label=i)
@@ -90,19 +89,17 @@ class Panel(ScreenPanel):
             if i == self.distance:
                 ctx.add_class("horizontal_togglebuttons_active")
             distgrid.attach(self.labels[i], j, 0, 1, 1)
-        '''
 
         # Create the drawing area
         self.drawing_area = Gtk.DrawingArea()
-        self.drawing_area.set_size_request(150, 150)  # Set desired size
+        self.drawing_area.set_size_request(300, 300)  # Set desired size
         self.drawing_area.connect("draw", self.on_draw)
         # Initialize toolhead position
         self.toolhead_position = {'x': 0, 'y': 0}
-
+        self.targeted_toolhead_position= {'x': 0, 'y': 0}
         box = Gtk.Box()
-        box.set_size_request(150, 150)
+        box.set_size_request(300, 300)
         box.pack_start(self.drawing_area, False, False, 0)
-
         #Enable touch events
         self.drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
         self.drawing_area.connect("button-press-event", self.on_grid_press)
@@ -118,14 +115,14 @@ class Panel(ScreenPanel):
         bottomgrid.attach(self.labels['pos_x'], 0, 0, 1, 1)
         bottomgrid.attach(self.labels['pos_y'], 1, 0, 1, 1)
         bottomgrid.attach(self.labels['pos_z'], 2, 0, 1, 1)
-        #bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
+        bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
 
         self.labels['move_menu'] = Gtk.Grid(row_homogeneous=False, column_homogeneous=True)
-        #self.labels['move_menu'].attach(grid, 0, 0, 1, 3)
-        #self.labels['move_menu'].attach(bottomgrid, 0, 3, 1, 1)
-        #self.labels['move_menu'].attach(distgrid, 0, 4, 1, 1)
+        self.labels['move_menu'].attach(grid, 0, 0, 1, 3)
+        self.labels['move_menu'].attach(bottomgrid, 0, 3, 1, 1)
+        self.labels['move_menu'].attach(distgrid, 0, 4, 1, 1)
         
-        self.labels['move_menu'].attach(box, 0, 0, 1, 3)
+        self.labels['move_menu'].attach(box, 1, 0, 3, 3)
 
         self.content.add(self.labels['move_menu'])
 
@@ -277,6 +274,9 @@ class Panel(ScreenPanel):
 
         # Draw the toolhead position
         self.draw_toolhead(cr, width, height)
+        # Draw the targeted toolhead position
+        self.draw_targeted_toolhead(cr, width, height)
+        
 
     def draw_grid(self, cr, width, height):
         # Set the grid color
@@ -312,10 +312,33 @@ class Panel(ScreenPanel):
         cr.rectangle(x - marker_size / 2, y - marker_size / 2, marker_size, marker_size)
         cr.fill()
 
+    def draw_targeted_toolhead(self, cr, width, height):
+        if self.targeted_toolhead_position['x'] is None or self.targeted_toolhead_position['y'] is None:
+            return  # No target set
+        # Map toolhead position to drawing area coordinates
+        x = self.targeted_toolhead_position['x']
+        y = self.targeted_toolhead_position['y']
+
+        # Set the toolhead color
+        cr.set_source_rgb(0, 1.0, 0)  # Red
+
+        # Define toolhead marker size
+        marker_size = 20  # pixels
+
+        # Draw the toolhead as a rectangle
+        cr.rectangle(x - marker_size / 2, y - marker_size / 2, marker_size, marker_size)
+        cr.fill()
+
     def update_toolhead_position(self, x, y):
         # Update the toolhead position
         self.toolhead_position['x'] = x
         self.toolhead_position['y'] = y
+
+        # If toolhead reaches the target, clear the target
+        if (self.targeted_toolhead_position['x'] is not None and self.targeted_toolhead_position['y'] is not None and
+            round(x, 1) == round(self.targeted_toolhead_position['x'], 1) and
+            round(y, 1) == round(self.targeted_toolhead_position['y'], 1)):
+            self.targeted_toolhead_position = {'x': None, 'y': None}  # Clear the target
 
         # Redraw the drawing area
         self.drawing_area.queue_draw()
@@ -363,4 +386,10 @@ class Panel(ScreenPanel):
         if event.button == 1:  # Left mouse button or touch
             # Convert screen coordinates to toolhead coordinates
             #x, y = self.map_coordinates_to_toolhead(event.x, event.y)
-            self.issue_move_command(event.x, event.y)
+            x = round(event.x, 2)
+            y = round(event.y, 2)
+
+            self.targeted_toolhead_position['x'] = x
+            self.targeted_toolhead_position['y'] = y
+
+            self.issue_move_command(x, y)
