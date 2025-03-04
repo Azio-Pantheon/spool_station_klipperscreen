@@ -3,7 +3,7 @@ import logging
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Pango, Gdk
+from gi.repository import Gtk, Pango
 from ks_includes.KlippyGcodes import KlippyGcodes
 from ks_includes.screen_panel import ScreenPanel
 
@@ -26,63 +26,88 @@ class Panel(ScreenPanel):
         self.settings = {}
         self.menu = ['move_menu']
         self.buttons = {
+            'x+': self._gtk.Button("arrow-down", "X+", "color1"),
+            'x-': self._gtk.Button("arrow-up", "X-", "color1"),
+            'y+': self._gtk.Button("arrow-right", "Y+", "color2"),
+            'y-': self._gtk.Button("arrow-left", "Y-", "color2"),
+            'z+': self._gtk.Button("z-farther", "Bed Up", "color3"),    #Z+
+            'z-': self._gtk.Button("z-closer", "Bed Down", "color3"),     #Z-
             'home': self._gtk.Button("home", _("Home"), "color4"),
-            'bed_to_top': self._gtk.Button("z-farther", "Bed to Top", "color3"),
-            'bed_to_middle': self._gtk.Button("z-farther", "Bed to Middle", "color3"),
-            'bed_to_bottom': self._gtk.Button("z-closer", "Bed to Bottom", "color3"),
-            'confirm': self._gtk.Button("complete","Confirm Move","color3"),
-            'precise_move': self._gtk.Button("move","Precise Move","color1")
-            
+            'motors_off': self._gtk.Button("motor-off", _("Disable Motors"), "color4"),
         }
-
+        self.buttons['x+'].connect("clicked", self.move, "X", "+")
+        self.buttons['x-'].connect("clicked", self.move, "X", "-")
+        self.buttons['y+'].connect("clicked", self.move, "Y", "+")
+        self.buttons['y-'].connect("clicked", self.move, "Y", "-")
+        self.buttons['z+'].connect("clicked", self.move, "Z", "+")
+        self.buttons['z-'].connect("clicked", self.move, "Z", "-")
         self.buttons['home'].connect("clicked", self.home)
-
+        script = {"script": "M18"}
+        self.buttons['motors_off'].connect("clicked", self._screen._confirm_send_action,
+                                           _("Are you sure you wish to disable motors?"),
+                                           "printer.gcode.script", script)
         adjust = self._gtk.Button("settings", None, "color2", 1, Gtk.PositionType.LEFT, 1)
         adjust.connect("clicked", self.load_menu, 'options', _('Settings'))
         adjust.set_hexpand(False)
-
-        self.buttons['precise_move'].connect("clicked", self.menu_item_clicked, {
-            "panel": "precise_move", "name": _("Precise Move")})
-
         grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
-        grid.attach(self.buttons['bed_to_top'], 0, 0, 1, 1)
-        grid.attach(self.buttons['bed_to_middle'], 0, 1, 1, 1)
-        grid.attach(self.buttons['bed_to_bottom'], 0, 2, 1, 1)
-        grid.attach(self.buttons['confirm'], 1, 2, 1, 1)
-        grid.attach(self.buttons['home'], 1, 0, 1, 1)
-        grid.attach(self.buttons['precise_move'], 1, 1, 1, 1)
+        if self._screen.vertical_mode:
+            if self._screen.lang_ltr:
+                grid.attach(self.buttons['y+'], 2, 1, 1, 1)
+                grid.attach(self.buttons['y-'], 0, 1, 1, 1)
+                grid.attach(self.buttons['z+'], 2, 2, 1, 1)
+                grid.attach(self.buttons['z-'], 0, 2, 1, 1)
+            else:
+                grid.attach(self.buttons['y+'], 0, 1, 1, 1)
+                grid.attach(self.buttons['y-'], 2, 1, 1, 1)
+                grid.attach(self.buttons['z+'], 0, 2, 1, 1)
+                grid.attach(self.buttons['z-'], 2, 2, 1, 1)
+            grid.attach(self.buttons['x-'], 1, 0, 1, 1)
+            grid.attach(self.buttons['x+'], 1, 1, 1, 1)
 
-        # Create the drawing area
-        self.drawing_area = Gtk.DrawingArea()
-        self.drawing_area.set_size_request(540, 540)
-        self.drawing_area.connect("draw", self.on_draw)
-        # Initialize toolhead position
-        self.toolhead_position = {'x': None, 'y': None}
-        self.targeted_toolhead_position= {'x': None, 'y': None}
-        box = Gtk.Box()
-        box.pack_start(self.drawing_area, False, False, 0)
-        #Enable touch events
-        self.drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
-        self.drawing_area.connect("button-press-event", self.on_grid_press)
-        #self.drawing_area.connect("button-release-event", self.on_grid_release)
+        else:
+            if self._screen.lang_ltr:
+                grid.attach(self.buttons['y+'], 2, 1, 1, 1)
+                grid.attach(self.buttons['y-'], 0, 1, 1, 1)
+            else:
+                grid.attach(self.buttons['y+'], 0, 1, 1, 1)
+                grid.attach(self.buttons['y-'], 2, 1, 1, 1)
+            grid.attach(self.buttons['x-'], 1, 0, 1, 1)
+            grid.attach(self.buttons['x+'], 1, 1, 1, 1)
+            grid.attach(self.buttons['z+'], 3, 0, 1, 1)
+            grid.attach(self.buttons['z-'], 3, 1, 1, 1)
 
-        
+        grid.attach(self.buttons['home'], 0, 0, 1, 1)
+        grid.attach(self.buttons['motors_off'], 2, 0, 1, 1)
+
+        distgrid = Gtk.Grid()
+        for j, i in enumerate(self.distances):
+            self.labels[i] = self._gtk.Button(label=i)
+            self.labels[i].set_direction(Gtk.TextDirection.LTR)
+            self.labels[i].connect("clicked", self.change_distance, i)
+            ctx = self.labels[i].get_style_context()
+            ctx.add_class("horizontal_togglebuttons")
+            if i == self.distance:
+                ctx.add_class("horizontal_togglebuttons_active")
+            distgrid.attach(self.labels[i], j, 0, 1, 1)
+
         for p in ('pos_x', 'pos_y', 'pos_z'):
             self.labels[p] = Gtk.Label()
+        self.labels['move_dist'] = Gtk.Label(label=_("Move Distance (mm)"))
 
         bottomgrid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
         bottomgrid.set_direction(Gtk.TextDirection.LTR)
         bottomgrid.attach(self.labels['pos_x'], 0, 0, 1, 1)
         bottomgrid.attach(self.labels['pos_y'], 1, 0, 1, 1)
         bottomgrid.attach(self.labels['pos_z'], 2, 0, 1, 1)
-        #bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
+        bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
 
-        self.labels['move_menu'] = Gtk.Grid(row_homogeneous=False, column_homogeneous=False)
-        self.labels['move_menu'].attach(grid, 3, 0, 2, 3)
-        self.labels['move_menu'].attach(bottomgrid, 0, 4, 3, 1)
-        
-        self.labels['move_menu'].attach(box, 0, 0, 3, 3)
+        self.labels['move_menu'] = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
+        self.labels['move_menu'].attach(grid, 0, 0, 1, 3)
+        self.labels['move_menu'].attach(bottomgrid, 0, 3, 1, 1)
+        self.labels['move_menu'].attach(distgrid, 0, 4, 1, 1)
+
         self.content.add(self.labels['move_menu'])
+
         printer_cfg = self._printer.get_config_section("printer")
         # The max_velocity parameter is not optional in klipper config.
         max_velocity = int(float(printer_cfg["max_velocity"]))
@@ -105,6 +130,7 @@ class Panel(ScreenPanel):
                 "section": "main", "name": _("Z Speed (mm/s)"), "type": "scale", "value": "10",
                 "range": [1, max_z_velocity], "step": 1}}
         ]
+
         self.labels['options_menu'] = self._gtk.ScrolledWindow()
         self.labels['options'] = Gtk.Grid()
         self.labels['options_menu'].add(self.labels['options'])
@@ -138,9 +164,11 @@ class Panel(ScreenPanel):
             else:
                 self.labels['pos_z'].set_text("Z: ?")
 
-        gcode_position = data.get("gcode_move", {}).get("gcode_position", [None, None, None])
-        if gcode_position[0] is not None and gcode_position[1] is not None:
-            self.update_toolhead_position(gcode_position[0], gcode_position[1])
+    def change_distance(self, widget, distance):
+        logging.info(f"### Distance {distance}")
+        self.labels[f"{self.distance}"].get_style_context().remove_class("horizontal_togglebuttons_active")
+        self.labels[f"{distance}"].get_style_context().add_class("horizontal_togglebuttons_active")
+        self.distance = distance
 
     def move(self, widget, axis, direction):
         if self._config.get_config()['main'].getboolean(f"invert_{axis.lower()}", False):
@@ -212,125 +240,3 @@ class Panel(ScreenPanel):
         disname = self._screen._config.get_menu_name("move", name)
         menuitems = self._screen._config.get_menu_items("move", name)
         self._screen.show_panel("menu", disname, items=menuitems)
-
-    def on_draw(self, widget, cr):
-        # Get the dimensions of the drawing area
-        width = widget.get_allocated_width()
-        height = widget.get_allocated_height()
-        #width = 540
-        #height = 540
-        # Draw the grid
-        self.draw_grid(cr, width, height)
-
-        # Draw the toolhead position
-        self.draw_toolhead(cr, width, height)
-        # Draw the targeted toolhead position
-        self.draw_targeted_toolhead(cr, width, height)
-        
-
-    def draw_grid(self, cr, width, height):
-        # Set the grid color
-        cr.set_source_rgb(0.9, 0.9, 0.9)  # Light gray
-
-        # Define grid spacing
-        grid_spacing = 30  # pixels
-
-        # Draw vertical lines
-        for x in range(0, width, grid_spacing):
-            cr.move_to(x, 0)
-            cr.line_to(x, height)
-            cr.stroke()
-
-        # Draw horizontal lines
-        for y in range(0, height, grid_spacing):
-            cr.move_to(0, y)
-            cr.line_to(width, y)
-            cr.stroke()
-
-    def draw_toolhead(self, cr, width, height):
-        # Map toolhead position to drawing area coordinates
-        x = self.toolhead_position['x']
-        y = self.toolhead_position['y']
-
-        # Set the toolhead color
-        cr.set_source_rgb(1.0, 0, 0)  # Red
-
-        # Define toolhead marker size
-        marker_size = 20  # pixels
-
-        # Draw the toolhead as a rectangle
-        cr.rectangle(x - marker_size / 2, y - marker_size / 2, marker_size, marker_size)
-        cr.fill()
-
-    def draw_targeted_toolhead(self, cr, width, height):
-        if self.targeted_toolhead_position['x'] is None or self.targeted_toolhead_position['y'] is None:
-            return  # No target set
-        # Map toolhead position to drawing area coordinates
-        x = self.targeted_toolhead_position['x']
-        y = self.targeted_toolhead_position['y']
-
-        # Set the toolhead color
-        cr.set_source_rgb(0, 1.0, 0)  # Red
-
-        # Define toolhead marker size
-        marker_size = 20  # pixels
-
-        # Draw the toolhead as a rectangle
-        cr.rectangle(x - marker_size / 2, y - marker_size / 2, marker_size, marker_size)
-        cr.fill()
-
-    def update_toolhead_position(self, x, y):
-        # Update the toolhead position
-        self.toolhead_position['x'] = x
-        self.toolhead_position['y'] = y
-
-        # If toolhead reaches the target, clear the target
-        if (self.targeted_toolhead_position['x'] is not None and self.targeted_toolhead_position['y'] is not None and
-            round(x, 1) == round(self.targeted_toolhead_position['x'], 1) and
-            round(y, 1) == round(self.targeted_toolhead_position['y'], 1)):
-            self.targeted_toolhead_position = {'x': None, 'y': None}  # Clear the target
-
-        # Redraw the drawing area
-        self.drawing_area.queue_draw()
-
-    def on_touch_event(self, widget, event):
-        # Extract touch coordinates
-        x = event.x
-        y = event.y
-
-        if event.type == Gdk.EventType.TOUCH_BEGIN:
-            # User has touched the screen; draw the toolhead icon at this position
-            self.draw_toolhead_at_position(x, y, color=(0, 0, 1))  # Blue color
-        elif event.type == Gdk.EventType.TOUCH_END:
-            # User has lifted their finger; issue the move command
-            self.issue_move_command(x, y)
-
-        return True
-
-    def draw_toolhead_at_position(self, x, y, color):
-        # Update the toolhead position
-        self.toolhead_position['x'] = x
-        self.toolhead_position['y'] = y
-
-        # Redraw the drawing area
-        self.drawing_area.queue_draw()
-
-        # In your on_draw method, use the updated toolhead_position and color
-        # to render the toolhead icon appropriately
-    def issue_move_command(self, x, y):
-        # Construct the G-code command for absolute movement
-        #script = f"G90\nG0 X{x:.2f} Y{y:.2f} F1500"  # G90 for absolute positioning
-
-        # Send the command to the printer
-        #self._screen._send_action(None, "printer.gcode.script", {"script": script})
-        self._screen.show_popup_message((f"Move to {x},{y}"), level=2)
-
-    def on_grid_press(self, widget, event):
-        """Handles user press on the drawing area."""
-        if event.button == 1:  # Left mouse button or touch
-            x = round(event.x, 0)
-            y = round(event.y, 0)
-            self.targeted_toolhead_position['x'] = x
-            self.targeted_toolhead_position['y'] = y
-        # Redraw the drawing area
-        self.drawing_area.queue_draw()
