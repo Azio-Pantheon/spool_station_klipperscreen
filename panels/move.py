@@ -26,14 +26,7 @@ class Panel(ScreenPanel):
         self.settings = {}
         self.menu = ['move_menu']
         self.buttons = {
-            'x+': self._gtk.Button("arrow-down", "X+", "color1"),
-            'x-': self._gtk.Button("arrow-up", "X-", "color1"),
-            'y+': self._gtk.Button("arrow-right", "Y+", "color2"),
-            'y-': self._gtk.Button("arrow-left", "Y-", "color2"),
-            'z+': self._gtk.Button("z-farther", "Bed Up", "color3"),    #Z+
-            'z-': self._gtk.Button("z-closer", "Bed Down", "color3"),     #Z-
             'home': self._gtk.Button("home", _("Home"), "color4"),
-            'motors_off': self._gtk.Button("motor-off", _("Disable Motors"), "color4"),
             'bed_to_top': self._gtk.Button("z-farther", "Bed to Top", "color3"),
             'bed_to_middle': self._gtk.Button("z-farther", "Bed to Middle", "color3"),
             'bed_to_bottom': self._gtk.Button("z-closer", "Bed to Bottom", "color3"),
@@ -41,20 +34,15 @@ class Panel(ScreenPanel):
             'fine_tune': self._gtk.Button("move","Fine Tune","color1")
             
         }
-        self.buttons['x+'].connect("clicked", self.move, "X", "+")
-        self.buttons['x-'].connect("clicked", self.move, "X", "-")
-        self.buttons['y+'].connect("clicked", self.move, "Y", "+")
-        self.buttons['y-'].connect("clicked", self.move, "Y", "-")
-        self.buttons['z+'].connect("clicked", self.move, "Z", "+")
-        self.buttons['z-'].connect("clicked", self.move, "Z", "-")
+
         self.buttons['home'].connect("clicked", self.home)
-        script = {"script": "M18"}
-        self.buttons['motors_off'].connect("clicked", self._screen._confirm_send_action,
-                                           _("Are you sure you wish to disable motors?"),
-                                           "printer.gcode.script", script)
+
         adjust = self._gtk.Button("settings", None, "color2", 1, Gtk.PositionType.LEFT, 1)
         adjust.connect("clicked", self.load_menu, 'options', _('Settings'))
         adjust.set_hexpand(False)
+
+        self.buttons['fine_tune'].connect("clicked", self.open_fine_tune)
+
 
         grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
         grid.attach(self.buttons['bed_to_top'], 0, 0, 1, 1)
@@ -64,51 +52,11 @@ class Panel(ScreenPanel):
         grid.attach(self.buttons['home'], 1, 0, 1, 1)
         grid.attach(self.buttons['fine_tune'], 1, 1, 1, 1)
 
-        '''
-        grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
-        if self._screen.vertical_mode:
-            if self._screen.lang_ltr:
-                grid.attach(self.buttons['y+'], 2, 1, 1, 1)
-                grid.attach(self.buttons['y-'], 0, 1, 1, 1)
-                grid.attach(self.buttons['z+'], 2, 2, 1, 1)
-                grid.attach(self.buttons['z-'], 0, 2, 1, 1)
-            else:
-                grid.attach(self.buttons['y+'], 0, 1, 1, 1)
-                grid.attach(self.buttons['y-'], 2, 1, 1, 1)
-                grid.attach(self.buttons['z+'], 0, 2, 1, 1)
-                grid.attach(self.buttons['z-'], 2, 2, 1, 1)
-            grid.attach(self.buttons['x-'], 1, 0, 1, 1)
-            grid.attach(self.buttons['x+'], 1, 1, 1, 1)
 
-        else:
-            if self._screen.lang_ltr:
-                grid.attach(self.buttons['y+'], 2, 1, 1, 1)
-                grid.attach(self.buttons['y-'], 0, 1, 1, 1)
-            else:
-                grid.attach(self.buttons['y+'], 0, 1, 1, 1)
-                grid.attach(self.buttons['y-'], 2, 1, 1, 1)
-            grid.attach(self.buttons['x-'], 1, 0, 1, 1)
-            grid.attach(self.buttons['x+'], 1, 1, 1, 1)
-            grid.attach(self.buttons['z+'], 3, 0, 1, 1)
-            grid.attach(self.buttons['z-'], 3, 1, 1, 1)
-
-        grid.attach(self.buttons['home'], 0, 0, 1, 1)
-        grid.attach(self.buttons['motors_off'], 2, 0, 1, 1)
-        '''
-        distgrid = Gtk.Grid()
-        for j, i in enumerate(self.distances):
-            self.labels[i] = self._gtk.Button(label=i)
-            self.labels[i].set_direction(Gtk.TextDirection.LTR)
-            self.labels[i].connect("clicked", self.change_distance, i)
-            ctx = self.labels[i].get_style_context()
-            ctx.add_class("horizontal_togglebuttons")
-            if i == self.distance:
-                ctx.add_class("horizontal_togglebuttons_active")
-            distgrid.attach(self.labels[i], j, 0, 1, 1)
 
         # Create the drawing area
         self.drawing_area = Gtk.DrawingArea()
-        self.drawing_area.set_size_request(540, 540)  # Set desired size
+        self.drawing_area.set_size_request(540, 540)
         self.drawing_area.connect("draw", self.on_draw)
         # Initialize toolhead position
         self.toolhead_position = {'x': 0, 'y': 0}
@@ -123,7 +71,6 @@ class Panel(ScreenPanel):
         
         for p in ('pos_x', 'pos_y', 'pos_z'):
             self.labels[p] = Gtk.Label()
-        self.labels['move_dist'] = Gtk.Label(label=_("Move Distance (mm)"))
 
         bottomgrid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
         bottomgrid.set_direction(Gtk.TextDirection.LTR)
@@ -135,7 +82,6 @@ class Panel(ScreenPanel):
         self.labels['move_menu'] = Gtk.Grid(row_homogeneous=False, column_homogeneous=False)
         self.labels['move_menu'].attach(grid, 3, 0, 2, 3)
         self.labels['move_menu'].attach(bottomgrid, 0, 4, 3, 1)
-        #self.labels['move_menu'].attach(distgrid, 0, 4, 1, 1)
         
         self.labels['move_menu'].attach(box, 0, 0, 3, 3)
         self.content.add(self.labels['move_menu'])
@@ -279,8 +225,8 @@ class Panel(ScreenPanel):
         # Get the dimensions of the drawing area
         width = widget.get_allocated_width()
         height = widget.get_allocated_height()
-        width = 540
-        height = 540
+        #width = 540
+        #height = 540
         # Draw the grid
         self.draw_grid(cr, width, height)
 
@@ -400,3 +346,139 @@ class Panel(ScreenPanel):
         if event.button == 1:  # Left mouse button or touch
             self.issue_move_command(self.targeted_toolhead_position['x'], self.targeted_toolhead_position['y'])
 
+
+    def open_fine_tune(self, widget):
+        # Create the dialog for selecting filament types
+        dialog = ClickOutsideDialog(title="Select Filament Type",
+                                    transient_for=widget.get_toplevel(),
+                                    flags=Gtk.DialogFlags.MODAL)
+        dialog.set_default_size(920, 550)
+
+        current_x, current_y = dialog.get_position()
+        dialog.move(current_x + 45, current_y + 5)  
+
+        buttons = {
+            'x+': self._gtk.Button("arrow-down", "X+", "color1"),
+            'x-': self._gtk.Button("arrow-up", "X-", "color1"),
+            'y+': self._gtk.Button("arrow-right", "Y+", "color2"),
+            'y-': self._gtk.Button("arrow-left", "Y-", "color2"),
+            'z+': self._gtk.Button("z-farther", "Bed Up", "color3"),    #Z+
+            'z-': self._gtk.Button("z-closer", "Bed Down", "color3"),     #Z-
+            'motors_off': self._gtk.Button("motor-off", _("Disable Motors"), "color4"),
+            'back': self._gtk.Button("back","Back","color1")
+            
+        }
+        buttons['x+'].connect("clicked", self.move, "X", "+")
+        buttons['x-'].connect("clicked", self.move, "X", "-")
+        buttons['y+'].connect("clicked", self.move, "Y", "+")
+        buttons['y-'].connect("clicked", self.move, "Y", "-")
+        buttons['z+'].connect("clicked", self.move, "Z", "+")
+        buttons['z-'].connect("clicked", self.move, "Z", "-")
+        buttons['back'].connect("clicked", self.close_dialog, dialog)
+        script = {"script": "M18"}
+        buttons['motors_off'].connect("clicked", self._screen._confirm_send_action,
+                                           _("Are you sure you wish to disable motors?"),
+                                           "printer.gcode.script", script)
+
+        grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
+        if self._screen.vertical_mode:
+            if self._screen.lang_ltr:
+                grid.attach(buttons['y+'], 2, 1, 1, 1)
+                grid.attach(buttons['y-'], 0, 1, 1, 1)
+                grid.attach(buttons['z+'], 2, 2, 1, 1)
+                grid.attach(buttons['z-'], 0, 2, 1, 1)
+            else:
+                grid.attach(buttons['y+'], 0, 1, 1, 1)
+                grid.attach(buttons['y-'], 2, 1, 1, 1)
+                grid.attach(buttons['z+'], 0, 2, 1, 1)
+                grid.attach(buttons['z-'], 2, 2, 1, 1)
+            grid.attach(buttons['x-'], 1, 0, 1, 1)
+            grid.attach(buttons['x+'], 1, 1, 1, 1)
+
+        else:
+            if self._screen.lang_ltr:
+                grid.attach(buttons['y+'], 2, 1, 1, 1)
+                grid.attach(buttons['y-'], 0, 1, 1, 1)
+            else:
+                grid.attach(buttons['y+'], 0, 1, 1, 1)
+                grid.attach(buttons['y-'], 2, 1, 1, 1)
+            grid.attach(buttons['x-'], 1, 0, 1, 1)
+            grid.attach(buttons['x+'], 1, 1, 1, 1)
+            grid.attach(buttons['z+'], 3, 0, 1, 1)
+            grid.attach(buttons['z-'], 3, 1, 1, 1)
+
+        grid.attach(buttons['back'], 0, 0, 1, 1)
+        grid.attach(buttons['motors_off'], 2, 0, 1, 1)
+
+        label = Gtk.Label(label=_("Move Distance (mm)"))
+        bottomgrid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
+        bottomgrid.set_direction(Gtk.TextDirection.LTR)
+        bottomgrid.attach(label, 0, 0, 3, 1)
+
+        distgrid = Gtk.Grid()
+        for j, i in enumerate(self.distances):
+            self.labels[i] = self._gtk.Button(label=i)
+            self.labels[i].set_direction(Gtk.TextDirection.LTR)
+            self.labels[i].connect("clicked", self.change_distance, i)
+            ctx = self.labels[i].get_style_context()
+            ctx.add_class("horizontal_togglebuttons")
+            if i == self.distance:
+                ctx.add_class("horizontal_togglebuttons_active")
+            distgrid.attach(self.labels[i], j, 0, 1, 1)
+
+        # Add the grid to the dialog content area and show all
+        content_area = dialog.get_content_area()
+        content_area.add(grid)
+        content_area.add(bottomgrid)
+        content_area.add(distgrid)
+        dialog.show_all()
+
+    def close_dialog(self, widget, dialog):
+        # Close the dialog 
+        dialog.destroy()
+
+class ClickOutsideDialog(Gtk.Dialog):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        
+        # Set dialog to modal and always above other windows (optional)
+        self.set_modal(True)
+        self.set_keep_above(True)
+
+        # Connect event to detect clicks outside the dialog
+        self.get_toplevel().connect("button-press-event", self.on_button_press)
+
+        self.add_background()
+
+    def on_button_press(self, widget, event):
+        # Get the dialog's allocation (size) and position
+        allocation = self.get_allocation()
+        x, y = self.get_position()
+        # Check if the click is outside the dialog
+        if not (x <= event.x_root <= x + allocation.width and
+                y <= event.y_root <= y + allocation.height):
+            self.destroy()
+            return True  # Event handled
+        return False  # Let other handlers process the event
+    
+    def add_background(self):
+        # Create a CSS provider
+        css_provider = Gtk.CssProvider()
+        css_provider.load_from_data(b"""
+            .pantheon-background {
+                background-color: #1a191a;
+            }
+        """)
+
+        # Get the content area (or main container) of the dialog
+        content_area = self.get_content_area()
+
+        # Apply the red-background class to the content area
+        content_area.get_style_context().add_class('pantheon-background')
+
+        # Add the CSS provider to the screen's default display
+        Gtk.StyleContext.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
