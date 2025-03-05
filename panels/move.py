@@ -159,21 +159,6 @@ class Panel(ScreenPanel):
             # Flip x and y because of printers coordianates are different
             self.update_toolhead_position(gcode_position[1],gcode_position[0])
 
-    def move(self, widget, axis, direction):
-        if self._config.get_config()['main'].getboolean(f"invert_{axis.lower()}", False):
-            direction = "-" if direction == "+" else "+"
-
-        dist = f"{direction}{self.distance}"
-        config_key = "move_speed_z" if axis == "Z" else "move_speed_xy"
-        speed = None if self.ks_printer_cfg is None else self.ks_printer_cfg.getint(config_key, None)
-        if speed is None:
-            speed = self._config.get_config()['main'].getint(config_key, 20)
-        speed = 60 * max(1, speed)
-        script = f"{KlippyGcodes.MOVE_RELATIVE}\nG0 {axis}{dist} F{speed}"
-        self._screen._send_action(widget, "printer.gcode.script", {"script": script})
-        if self._printer.get_stat("gcode_move", "absolute_coordinates"):
-            self._screen._ws.klippy.gcode_script("G90")
-
     def add_option(self, boxname, opt_array, opt_name, option):
         name = Gtk.Label(hexpand=True, vexpand=True, halign=Gtk.Align.START, valign=Gtk.Align.CENTER, wrap=True)
         name.set_markup(f"<big><b>{option['name']}</b></big>")
