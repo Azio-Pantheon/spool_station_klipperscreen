@@ -63,8 +63,8 @@ class Panel(ScreenPanel):
         self.toolhead_position = {'x': None, 'y': None}
         self.targeted_toolhead_position= {'x': None, 'y': None}
         self.selected_bed_button = None
-        self.axes_maximum = None
-        self.axes_minimum = None
+        self.axis_maximum = None
+        self.axis_minimum = None
 
         self.z_maximum = None
         self.scale_factor_x = None
@@ -153,22 +153,21 @@ class Panel(ScreenPanel):
             else:
                 self.labels['pos_z'].set_text("Z: ?")
 
-        if self._printer.get_stat("toolhead", "axis_maximum") is not None and self.axes_maximum is None:
-            self.axes_maximum = self._printer.get_stat("toolhead", "axis_maximum")
-            min_axis_max = min(self.axes_maximum[0], self.axes_maximum[1])
-            self.z_maximum = self.axes_maximum[2]
+        if self._printer.get_stat("toolhead", "axis_maximum") is not None and self.axis_maximum is None:
+            self.axis_maximum = self._printer.get_stat("toolhead", "axis_maximum")
+            min_axis_max = min(self.axis_maximum[0], self.axis_maximum[1])
+            self.z_maximum = self.axis_maximum[2]
             self.scale_factor = 540 / min_axis_max
 
         if self._printer.get_stat("toolhead", "axis_minimum") is not None and self.axis_minimum is None:
             self.axis_minimum = self._printer.get_stat("toolhead", "axis_minimum")
             # Calculate total range for X and Y
-            x_range = self.axes_maximum[0] - self.axes_minimum[0]  # X max - X min
-            y_range = self.axes_maximum[1] - self.axes_minimum[1]  # Y max - Y min
+            x_range = self.axis_maximum[0] - self.axis_minimum[0]  # X max - X min
+            y_range = self.axis_maximum[1] - self.axis_minimum[1]  # Y max - Y min
 
             # Choose the scaling factor based on the larger range (maintaining aspect ratio)
             self.scale_factor_x = 540 / x_range
             self.scale_factor_y = 540 / y_range
-            #self.z_maximum = self.axes_maximum[2]
 
         gcode_position = data.get("gcode_move", {}).get("gcode_position", [None, None, None])
         if gcode_position[0] is not None and gcode_position[1] is not None:
@@ -387,16 +386,16 @@ class Panel(ScreenPanel):
 
     def actual_to_grid(self, x, y):
         """Maps a (x, y) toolhead position to the 540x540 grid."""
-        # Map the original coordinates
-        grid_x = (x - self.axes_minimum[0]) * self.scale_factor_x
-        grid_y = (y - self.axes_minimum[1]) * self.scale_factor_y
+        # Map the original coordinates. axis_minimum is flipped btw
+        grid_x = (x - self.axis_minimum[1]) * self.scale_factor_x
+        grid_y = (y - self.axis_minimum[0]) * self.scale_factor_y
 
         return grid_x, grid_y
     
     def grid_to_actual(self, grid_x, grid_y):
-        # Convert grid coordinates back to real-world printer coordinates
-        actual_x = (grid_x / self.scale_factor_x) + self.axes_minimum[0]
-        actual_y = (grid_y / self.scale_factor_y) + self.axes_minimum[1]
+        # Convert grid coordinates back to real-world printer coordinates. axis_minimum is flipped btw
+        actual_x = (grid_x / self.scale_factor_x) + self.axis_minimum[1]
+        actual_y = (grid_y / self.scale_factor_y) + self.axis_minimum[0]
 
         return actual_x, actual_y
     
