@@ -68,14 +68,16 @@ class Panel(ScreenPanel):
         self.scale_factor = None
         self.target_xy = None
         self.target_z = None
+        self.dragging_toolhead = False
 
         box = Gtk.Box()
         box.pack_start(self.drawing_area, False, False, 0)
         #Enable touch events
-        self.drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK)
-        self.drawing_area.connect("button-press-event", self.on_grid_press)
-        #self.drawing_area.connect("button-release-event", self.on_grid_release)
-
+        self.drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.POINTER_MOTION_MASK)        
+        #self.drawing_area.connect("button-press-event", self.on_grid_press)
+        self.drawing_area.connect("button-press-event", self.on_toolhead_press)
+        self.drawing_area.connect("motion-notify-event", self.on_toolhead_drag)
+        self.drawing_area.connect("button-release-event", self.on_toolhead_release)
         
         for p in ('pos_x', 'pos_y', 'pos_z'):
             self.labels[p] = Gtk.Label()
@@ -294,9 +296,6 @@ class Panel(ScreenPanel):
         # Redraw the drawing area
         self.drawing_area.queue_draw()
 
-    def issue_move_command(self, x, y):
-        self._screen.show_popup_message((f"Move to {x},{y}"), level=2)
-
     def on_grid_press(self, widget, event):
         """Handles user press on the drawing area."""
         if event.button == 1:  # Left mouse button or touch
@@ -307,7 +306,6 @@ class Panel(ScreenPanel):
             mapped_x, mapped_y = self.grid_to_actual(x, y)
             #flipping coordinates here because our printer axises
             self.target_xy = [int(mapped_y), int(mapped_x)]
-            #self.issue_move_command(int(mapped_y), int(mapped_x))
         # Redraw the drawing area
         self.drawing_area.queue_draw()
 
@@ -388,3 +386,49 @@ class Panel(ScreenPanel):
 
         return actual_x, actual_y
     
+    def on_toolhead_press(self, widget, event):
+        """Handles user press on the toolhead to start dragging."""
+        if event.button == 1:  # Left mouse button or touch
+            x = event.x
+            y = event.y
+
+            # Check if the press is inside the toolhead rectangle
+            tool_x = self.toolhead_position['x']
+            tool_y = self.toolhead_position['y']
+            marker_size = 40  # double the selection box so its easier to click
+
+            if tool_x - marker_size / 2 <= x <= tool_x + marker_size / 2 and \
+            tool_y - marker_size / 2 <= y <= tool_y + marker_size / 2:
+                self.dragging_toolhead = True  # Enable dragging mode
+
+    def on_toolhead_drag(self, widget, event):
+        """Handles dragging movement while the user moves the toolhead."""
+        if self.dragging_toolhead:  # Only move if dragging is active
+            x = int(event.x)
+            y = int(event.y)
+
+            # Update the toolhead position while dragging
+            self.toolhead_position['x'] = x
+            self.toolhead_position['y'] = y
+
+            # Redraw the drawing area to reflect new position
+            self.drawing_area.queue_draw()
+
+    def on_toolhead_release(self, widget, event):
+        """Handles user releasing the toolhead to set the final position."""
+        if self.dragging_toolhead:
+            self.dragging_toolhead = False  # Disable dragging mode
+
+            x = int(event.x)
+            y = int(event.y)
+
+            # Set the target position based on the final dragged position
+            self.targeted_toolhead_position['x'] = x
+            self.targeted_toolhead_position['y'] = y
+
+            # Convert to actual coordinates
+            mapped_x, mapped_y = self.grid_to_actual(x, y)
+            self.target_xy = [int(mapped_y), int(mapped_x)]  # Flip coordinates
+
+            # Redraw the drawing area
+            self.drawing_area.queue_draw()
