@@ -63,6 +63,11 @@ class Panel(ScreenPanel):
         self.toolhead_position = {'x': None, 'y': None}
         self.targeted_toolhead_position= {'x': None, 'y': None}
         self.selected_bed_button = None
+        self.axes_maximum = None
+        self.z_maximum = None
+        self.scale_factor = None
+        self.target_xy = None
+        self.target_z = None
 
         box = Gtk.Box()
         box.pack_start(self.drawing_area, False, False, 0)
@@ -143,9 +148,16 @@ class Panel(ScreenPanel):
             else:
                 self.labels['pos_z'].set_text("Z: ?")
 
+        if self._printer.get_stat("toolhead", "axis_maximum") is not None and self.axes_maximum is None:
+            self.axes_maximum = self._printer.get_stat("toolhead", "axis_maximum")
+            min_axis_max = min(self.axes_maximum[0], self.axes_maximum[1])
+            self.z_maximum = self.axes_maximum[2]
+            self.scale_factor = 540 / min_axis_max
+
         gcode_position = data.get("gcode_move", {}).get("gcode_position", [None, None, None])
         if gcode_position[0] is not None and gcode_position[1] is not None:
-            self.update_toolhead_position(gcode_position[0], gcode_position[1])
+            # Flip x and y because of printers coordianates are different
+            self.update_toolhead_position(gcode_position[1],gcode_position[0])
 
     def move(self, widget, axis, direction):
         if self._config.get_config()['main'].getboolean(f"invert_{axis.lower()}", False):
@@ -273,7 +285,6 @@ class Panel(ScreenPanel):
         # Map toolhead position to drawing area coordinates
         x = self.targeted_toolhead_position['x']
         y = self.targeted_toolhead_position['y']
-
         # Set the toolhead color
         cr.set_source_rgb(0, 1.0, 0)  # Red
 
@@ -285,58 +296,33 @@ class Panel(ScreenPanel):
         cr.fill()
 
     def update_toolhead_position(self, x, y):
-        # Update the toolhead position
-        self.toolhead_position['x'] = x
-        self.toolhead_position['y'] = y
+        mapped_x, mapped_y = self.actual_to_grid(x, y)
+        self.toolhead_position['x'] = mapped_x
+        self.toolhead_position['y'] = mapped_y
 
         # If toolhead reaches the target, clear the target
         if (self.targeted_toolhead_position['x'] is not None and self.targeted_toolhead_position['y'] is not None and
-            round(x, 1) == round(self.targeted_toolhead_position['x'], 1) and
-            round(y, 1) == round(self.targeted_toolhead_position['y'], 1)):
+            int(x) == int(self.targeted_toolhead_position['x']) and
+            int(y) == int(self.targeted_toolhead_position['y'])):
             self.targeted_toolhead_position = {'x': None, 'y': None}  # Clear the target
 
         # Redraw the drawing area
         self.drawing_area.queue_draw()
 
-    def on_touch_event(self, widget, event):
-        # Extract touch coordinates
-        x = event.x
-        y = event.y
-
-        if event.type == Gdk.EventType.TOUCH_BEGIN:
-            # User has touched the screen; draw the toolhead icon at this position
-            self.draw_toolhead_at_position(x, y, color=(0, 0, 1))  # Blue color
-        elif event.type == Gdk.EventType.TOUCH_END:
-            # User has lifted their finger; issue the move command
-            self.issue_move_command(x, y)
-
-        return True
-
-    def draw_toolhead_at_position(self, x, y, color):
-        # Update the toolhead position
-        self.toolhead_position['x'] = x
-        self.toolhead_position['y'] = y
-
-        # Redraw the drawing area
-        self.drawing_area.queue_draw()
-
-        # In your on_draw method, use the updated toolhead_position and color
-        # to render the toolhead icon appropriately
     def issue_move_command(self, x, y):
-        # Construct the G-code command for absolute movement
-        #script = f"G90\nG0 X{x:.2f} Y{y:.2f} F1500"  # G90 for absolute positioning
-
-        # Send the command to the printer
-        #self._screen._send_action(None, "printer.gcode.script", {"script": script})
         self._screen.show_popup_message((f"Move to {x},{y}"), level=2)
 
     def on_grid_press(self, widget, event):
         """Handles user press on the drawing area."""
         if event.button == 1:  # Left mouse button or touch
-            x = round(event.x, 0)
-            y = round(event.y, 0)
+            x = int(event.x)
+            y = int(event.y)
             self.targeted_toolhead_position['x'] = x
             self.targeted_toolhead_position['y'] = y
+            mapped_x, mapped_y = self.grid_to_actual(x, y)
+            #flipping coordinates here because our printer axises
+            self.target_xy = [int(mapped_y), int(mapped_x)]
+            self.issue_move_command(int(mapped_y), int(mapped_x))
         # Redraw the drawing area
         self.drawing_area.queue_draw()
 
@@ -348,31 +334,72 @@ class Panel(ScreenPanel):
         # Toggle selection state
         if self.selected_bed_button == position:
             self.selected_bed_button = None  # Unselect if clicked again
+            self.target_z = None
         else:
             self.selected_bed_button = position
+            if self.selected_bed_button == "bed_to_top":
+                self.target_z = 0
+            elif self.selected_bed_button == "bed_to_middle":
+                self.target_z = self.z_maximum / 2
+            elif self.selected_bed_button == "bed_to_bottom":
+                self.target_z = self.z_maximum - 5
             widget.get_style_context().add_class("selected")  # Highlight the button
 
     def confirm_move(self, widget):
         """Sends the move command and clears the selection."""
-        if self.selected_bed_button is None:
+        if self.target_xy is None and self.selected_bed_button is None:
             self._screen.show_popup_message("No position is selected!", level=2)
             return  # No action if nothing is selected
 
-        # Map positions to G-code commands
-        bed_moves = {
-            "bed_to_top": "G0 Z0",       # Example G-code for moving bed to the top
-            "bed_to_middle": "G0 Z100",  # Example G-code for middle position
-            "bed_to_bottom": "G0 Z200"   # Example G-code for bottom
-        }
-        
-        gcode = bed_moves.get(self.selected_bed_button)
-        
-        if gcode:
-            #self._screen._send_action(widget, "printer.gcode.script", {"script": gcode})
-            self._screen.show_popup_message("Sending move command", level=1)
+        move_command = "G90\nG0"  # Absolute positioning move
+        # Handle XY movement
+        if self.target_xy is not None:
+            x, y = self.target_xy
+            move_command += f" X{x} Y{y}"
+            speed = self.ks_printer_cfg.getint("move_speed_xy", None) if self.ks_printer_cfg else None
+            if speed is None:
+                speed = self._config.get_config()['main'].getint("move_speed_xy", 20)
+            speed = 60 * max(1, speed)  # Convert to mm/min
 
+        # Handle Z movement
+        if self.target_z is not None:
+            move_command += f" Z{self.target_z}"
+            speed = self.ks_printer_cfg.getint("move_speed_z", None) if self.ks_printer_cfg else None
+            if speed is None:
+                speed = self._config.get_config()['main'].getint("move_speed_z", 20)
+            speed = 60 * max(1, speed)  # Convert to mm/min
+
+        # Add speed to the move command
+        move_command += f" F{speed}"
+
+        # Send the command to Klipper
+        self._screen._send_action(widget, "printer.gcode.script", {"script": move_command})
+
+        # Reset target positions after move
+        self.target_xy = None
+        self.target_z = None
+        self.targeted_toolhead_position= {'x': None, 'y': None}
+
+        if not self._printer.get_stat("gcode_move", "absolute_coordinates"):
+            self._screen._ws.klippy.gcode_script("G90")
 
         # Clear selection
         self.selected_bed_button = None
         for btn in ['bed_to_top', 'bed_to_middle', 'bed_to_bottom']:
             self.buttons[btn].get_style_context().remove_class("selected")
+
+    def actual_to_grid(self, x, y):
+        """Maps a (x, y) toolhead position to the 540x540 grid."""
+        # Map the original coordinates
+        mapped_x = x * self.scale_factor
+        mapped_y = y * self.scale_factor
+
+        return mapped_x, mapped_y
+    
+    def grid_to_actual(self, grid_x, grid_y):
+        # Convert grid coordinates back to real-world printer coordinates
+        actual_x = grid_x / self.scale_factor
+        actual_y = grid_y / self.scale_factor
+
+        return actual_x, actual_y
+    
