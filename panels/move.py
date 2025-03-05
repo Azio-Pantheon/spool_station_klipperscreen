@@ -26,17 +26,20 @@ class Panel(ScreenPanel):
         self.settings = {}
         self.menu = ['move_menu']
         self.buttons = {
-            'home': self._gtk.Button("home", _("Home"), "color4"),
-            'bed_to_top': self._gtk.Button("z-farther", "Bed to Top", "color3"),
-            'bed_to_middle': self._gtk.Button("z-farther", "Bed to Middle", "color3"),
-            'bed_to_bottom': self._gtk.Button("z-closer", "Bed to Bottom", "color3"),
-            'confirm': self._gtk.Button("complete","Confirm Move","color3"),
-            'precise_move': self._gtk.Button("move","Precise Move","color1")
-            
+            'home': self._gtk.Button("home", _("Home"), "color1"),
+            'bed_to_top': self._gtk.Button("z-farther", "Bed to Top", "color1"),
+            'bed_to_middle': self._gtk.Button("z-farther", "Bed to Middle", "color1"),
+            'bed_to_bottom': self._gtk.Button("z-closer", "Bed to Bottom", "color1"),
+            'confirm': self._gtk.Button("complete","Confirm Move","color1"),
+            'precise_move': self._gtk.Button("move","Precise Move","color1") 
         }
 
         self.buttons['home'].connect("clicked", self.home)
-
+        self.buttons['bed_to_top'].connect("clicked", self.toggle_bed_selection, "bed_to_top")
+        self.buttons['bed_to_middle'].connect("clicked", self.toggle_bed_selection, "bed_to_middle")
+        self.buttons['bed_to_bottom'].connect("clicked", self.toggle_bed_selection, "bed_to_bottom")
+        self.buttons['confirm'].connect("clicked", self.confirm_move)
+        
         adjust = self._gtk.Button("settings", None, "color2", 1, Gtk.PositionType.LEFT, 1)
         adjust.connect("clicked", self.load_menu, 'options', _('Settings'))
         adjust.set_hexpand(False)
@@ -59,6 +62,8 @@ class Panel(ScreenPanel):
         # Initialize toolhead position
         self.toolhead_position = {'x': None, 'y': None}
         self.targeted_toolhead_position= {'x': None, 'y': None}
+        self.selected_bed_button = None
+
         box = Gtk.Box()
         box.pack_start(self.drawing_area, False, False, 0)
         #Enable touch events
@@ -334,3 +339,40 @@ class Panel(ScreenPanel):
             self.targeted_toolhead_position['y'] = y
         # Redraw the drawing area
         self.drawing_area.queue_draw()
+
+    def toggle_bed_selection(self, widget, position):    
+        # Deselect previous button if a different one is clicked
+        if self.selected_bed_button:
+            self.buttons[self.selected_bed_button].get_style_context().remove_class("selected")
+
+        # Toggle selection state
+        if self.selected_bed_button == position:
+            self.selected_bed_button = None  # Unselect if clicked again
+        else:
+            self.selected_bed_button = position
+            widget.get_style_context().add_class("selected")  # Highlight the button
+
+    def confirm_move(self, widget):
+        """Sends the move command and clears the selection."""
+        if self.selected_bed_button is None:
+            self._screen.show_popup_message("No position is selected!", level=2)
+            return  # No action if nothing is selected
+
+        # Map positions to G-code commands
+        bed_moves = {
+            "bed_to_top": "G0 Z0",       # Example G-code for moving bed to the top
+            "bed_to_middle": "G0 Z100",  # Example G-code for middle position
+            "bed_to_bottom": "G0 Z200"   # Example G-code for bottom
+        }
+        
+        gcode = bed_moves.get(self.selected_bed_button)
+        
+        if gcode:
+            #self._screen._send_action(widget, "printer.gcode.script", {"script": gcode})
+            self._screen.show_popup_message("Sending move command", level=1)
+
+
+        # Clear selection
+        self.selected_bed_button = None
+        for btn in ['bed_to_top', 'bed_to_middle', 'bed_to_bottom']:
+            self.buttons[btn].get_style_context().remove_class("selected")
