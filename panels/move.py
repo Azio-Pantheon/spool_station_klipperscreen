@@ -395,7 +395,7 @@ class Panel(ScreenPanel):
             # Check if the press is inside the toolhead rectangle
             tool_x = self.toolhead_position['x']
             tool_y = self.toolhead_position['y']
-            marker_size = 40  # double the selection box so its easier to click
+            marker_size = 60  # triple the selection box so its easier to click
 
             if tool_x - marker_size / 2 <= x <= tool_x + marker_size / 2 and \
             tool_y - marker_size / 2 <= y <= tool_y + marker_size / 2:
@@ -408,9 +408,10 @@ class Panel(ScreenPanel):
             y = int(event.y)
 
             # Update the toolhead position while dragging
-            self.toolhead_position['x'] = x
-            self.toolhead_position['y'] = y
-
+            #self.toolhead_position['x'] = x
+            #self.toolhead_position['y'] = y
+            self.targeted_toolhead_position['x'] = x
+            self.targeted_toolhead_position['y'] = y
             # Redraw the drawing area to reflect new position
             self.drawing_area.queue_draw()
 
@@ -432,3 +433,5 @@ class Panel(ScreenPanel):
 
             # Redraw the drawing area
             self.drawing_area.queue_draw()
+
+            self.confirm_move(widget)
