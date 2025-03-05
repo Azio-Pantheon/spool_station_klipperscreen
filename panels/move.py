@@ -322,7 +322,7 @@ class Panel(ScreenPanel):
             mapped_x, mapped_y = self.grid_to_actual(x, y)
             #flipping coordinates here because our printer axises
             self.target_xy = [int(mapped_y), int(mapped_x)]
-            self.issue_move_command(int(mapped_y), int(mapped_x))
+            #self.issue_move_command(int(mapped_y), int(mapped_x))
         # Redraw the drawing area
         self.drawing_area.queue_draw()
 
@@ -338,7 +338,7 @@ class Panel(ScreenPanel):
         else:
             self.selected_bed_button = position
             if self.selected_bed_button == "bed_to_top":
-                self.target_z = 0
+                self.target_z = 20
             elif self.selected_bed_button == "bed_to_middle":
                 self.target_z = self.z_maximum / 2
             elif self.selected_bed_button == "bed_to_bottom":
