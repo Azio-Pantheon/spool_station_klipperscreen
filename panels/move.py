@@ -155,6 +155,21 @@ class Panel(ScreenPanel):
     def process_update(self, action, data):
         if action != "notify_status_update":
             return
+
+        if self._printer.get_stat("toolhead", "axis_maximum") is not None and self.axis_maximum is None:
+            self.axis_maximum = self._printer.get_stat("toolhead", "axis_maximum")
+
+        if self._printer.get_stat("toolhead", "axis_minimum") is not None and self.axis_minimum is None:
+            self.axis_minimum = self._printer.get_stat("toolhead", "axis_minimum")
+            # Calculate total range for X and Y and Z
+            x_range = self.axis_maximum[0] - self.axis_minimum[0]  # X max - X min
+            y_range = self.axis_maximum[1] - self.axis_minimum[1]  # Y max - Y min
+            z_range = self.axis_maximum[2] - self.axis_minimum[2]  # Z max - Z min
+            # Choose the scaling factor based on the larger range (maintaining aspect ratio)
+            self.scale_factor_x = 540 / x_range
+            self.scale_factor_y = 540 / y_range
+            self.scale_factor_z = 540 / z_range
+            
         homed_axes = self._printer.get_stat("toolhead", "homed_axes")
         if homed_axes == "xyz":
             if "gcode_move" in data and "gcode_position" in data["gcode_move"]:
@@ -179,19 +194,7 @@ class Panel(ScreenPanel):
             else:
                 self.labels['pos_z'].set_text("Z: ?")
 
-        if self._printer.get_stat("toolhead", "axis_maximum") is not None and self.axis_maximum is None:
-            self.axis_maximum = self._printer.get_stat("toolhead", "axis_maximum")
 
-        if self._printer.get_stat("toolhead", "axis_minimum") is not None and self.axis_minimum is None:
-            self.axis_minimum = self._printer.get_stat("toolhead", "axis_minimum")
-            # Calculate total range for X and Y and Z
-            x_range = self.axis_maximum[0] - self.axis_minimum[0]  # X max - X min
-            y_range = self.axis_maximum[1] - self.axis_minimum[1]  # Y max - Y min
-            z_range = self.axis_maximum[2] - self.axis_minimum[2]  # Z max - Z min
-            # Choose the scaling factor based on the larger range (maintaining aspect ratio)
-            self.scale_factor_x = 540 / x_range
-            self.scale_factor_y = 540 / y_range
-            self.scale_factor_z = 540 / z_range
 
 
     def add_option(self, boxname, opt_array, opt_name, option):
@@ -301,6 +304,8 @@ class Panel(ScreenPanel):
         cr.fill()
 
     def update_toolhead_tray_position(self, x, y, z):
+        if self.axis_minimum is None:
+            return
         mapped_x, mapped_y, mapped_z = self.actual_to_grid(x, y, z)
         self.toolhead_position['x'] = mapped_x
         self.toolhead_position['y'] = mapped_y
@@ -318,6 +323,8 @@ class Panel(ScreenPanel):
 
         # Redraw the drawing area
         self.gantry_drawing_area.queue_draw()
+        self.tray_drawing_area.queue_draw()
+
 
     def confirm_move(self, widget):
         """Sends the move command and clears the selection."""
