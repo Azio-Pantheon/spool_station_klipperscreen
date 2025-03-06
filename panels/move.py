@@ -48,17 +48,13 @@ class Panel(ScreenPanel):
             "panel": "precise_move", "name": _("Precise Move")})
 
         grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
-        grid.attach(self.buttons['bed_to_top'], 0, 0, 1, 1)
-        grid.attach(self.buttons['bed_to_middle'], 0, 1, 1, 1)
-        grid.attach(self.buttons['bed_to_bottom'], 0, 2, 1, 1)
-        grid.attach(self.buttons['confirm'], 1, 2, 1, 1)
-        grid.attach(self.buttons['home'], 1, 0, 1, 1)
-        grid.attach(self.buttons['precise_move'], 1, 1, 1, 1)
+        grid.attach(self.buttons['home'], 0, 0, 1, 1)
+        grid.attach(self.buttons['precise_move'], 0, 1, 1, 1)
 
-        # Create the drawing area
-        self.drawing_area = Gtk.DrawingArea()
-        self.drawing_area.set_size_request(540, 540)
-        self.drawing_area.connect("draw", self.on_draw)
+        ###### Create the gantry drawing area
+        self.gantry_drawing_area = Gtk.DrawingArea()
+        self.gantry_drawing_area.set_size_request(540, 540)
+        self.gantry_drawing_area.connect("draw", self.on_draw)
         # Initialize toolhead position
         self.toolhead_position = {'x': None, 'y': None}
         self.targeted_toolhead_position= {'x': None, 'y': None}
@@ -73,15 +69,33 @@ class Panel(ScreenPanel):
         self.target_z = None
         self.dragging_toolhead = False
 
-        box = Gtk.Box()
-        box.pack_start(self.drawing_area, False, False, 0)
+        gantry_box = Gtk.Box()
+        gantry_box.pack_start(self.gantry_drawing_area, False, False, 0)
         #Enable touch events
-        self.drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.POINTER_MOTION_MASK)        
-        #self.drawing_area.connect("button-press-event", self.on_grid_press)
-        self.drawing_area.connect("button-press-event", self.on_toolhead_press)
-        self.drawing_area.connect("motion-notify-event", self.on_toolhead_drag)
-        self.drawing_area.connect("button-release-event", self.on_toolhead_release)
+        self.gantry_drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.POINTER_MOTION_MASK)        
+        #self.gantry_drawing_area.connect("button-press-event", self.on_grid_press)
+        self.gantry_drawing_area.connect("button-press-event", self.on_toolhead_press)
+        self.gantry_drawing_area.connect("motion-notify-event", self.on_toolhead_drag)
+        self.gantry_drawing_area.connect("button-release-event", self.on_toolhead_release)
         
+        ###### Create the build tray drawing area
+        self.tray_drawing_area = Gtk.DrawingArea()
+        self.tray_drawing_area.set_size_request(180, 540)
+        self.tray_drawing_area.connect("draw", self.tray_on_draw)
+        # Initialize tray position
+        self.tray_position = None
+        self.targeted_tray_position= None
+        self.dragging_tray = False
+
+        tray_box = Gtk.Box()
+        tray_box.pack_start(self.tray_drawing_area, False, False, 0)
+        #Enable touch events
+        self.tray_drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.POINTER_MOTION_MASK)        
+        self.tray_drawing_area.connect("button-press-event", self.on_toolhead_press)
+        self.tray_drawing_area.connect("motion-notify-event", self.on_toolhead_drag)
+        self.tray_drawing_area.connect("button-release-event", self.on_toolhead_release)
+
+
         for p in ('pos_x', 'pos_y', 'pos_z'):
             self.labels[p] = Gtk.Label()
 
@@ -93,10 +107,13 @@ class Panel(ScreenPanel):
         #bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
 
         self.labels['move_menu'] = Gtk.Grid(row_homogeneous=False, column_homogeneous=False)
-        self.labels['move_menu'].attach(grid, 3, 0, 2, 3)
+        self.labels['move_menu'].set_column_spacing(20)  # Adds 10px padding between columns
+
+        self.labels['move_menu'].attach(grid, 4, 0, 2, 3)
         self.labels['move_menu'].attach(bottomgrid, 0, 4, 3, 1)
         
-        self.labels['move_menu'].attach(box, 0, 0, 3, 3)
+        self.labels['move_menu'].attach(gantry_box, 0, 0, 3, 3)
+        self.labels['move_menu'].attach(tray_box, 3, 0, 1, 3)
         self.content.add(self.labels['move_menu'])
         printer_cfg = self._printer.get_config_section("printer")
         # The max_velocity parameter is not optional in klipper config.
@@ -301,7 +318,7 @@ class Panel(ScreenPanel):
             self.targeted_toolhead_position = {'x': None, 'y': None}  # Clear the target
 
         # Redraw the drawing area
-        self.drawing_area.queue_draw()
+        self.gantry_drawing_area.queue_draw()
 
     def on_grid_press(self, widget, event):
         """Handles user press on the drawing area."""
@@ -314,7 +331,7 @@ class Panel(ScreenPanel):
             #flipping coordinates here because our printer axises
             self.target_xy = [int(mapped_y), int(mapped_x)]
         # Redraw the drawing area
-        self.drawing_area.queue_draw()
+        self.gantry_drawing_area.queue_draw()
 
     def toggle_bed_selection(self, widget, position):    
         # Deselect previous button if a different one is clicked
@@ -420,7 +437,7 @@ class Panel(ScreenPanel):
             self.targeted_toolhead_position['x'] = x
             self.targeted_toolhead_position['y'] = y
             # Redraw the drawing area to reflect new position
-            self.drawing_area.queue_draw()
+            self.gantry_drawing_area.queue_draw()
 
     def on_toolhead_release(self, widget, event):
         """Handles user releasing the toolhead to set the final position."""
@@ -439,6 +456,71 @@ class Panel(ScreenPanel):
             self.target_xy = [int(mapped_y), int(mapped_x)]  # Flip coordinates
 
             # Redraw the drawing area
-            self.drawing_area.queue_draw()
+            self.gantry_drawing_area.queue_draw()
 
             self.confirm_move(widget)
+
+    def tray_on_draw(self, widget, cr):
+        # Get the dimensions of the drawing area
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+        #width = 540
+        #height = 540
+        # Draw the grid
+        self.tray_draw_grid(cr, width, height)
+
+        # Draw the tray position
+        self.draw_tray(cr, width, height)
+        # Draw the targeted tray position
+        self.draw_targeted_tray(cr, width, height)
+        
+
+    def tray_draw_grid(self, cr, width, height):
+        # Set the grid color
+        cr.set_source_rgb(0.9, 0.9, 0.9)  # Light gray
+
+        # Define grid spacing
+        grid_spacing = 30  # pixels
+
+        # Draw vertical lines
+        for x in range(0, width, grid_spacing):
+            cr.move_to(x, 0)
+            cr.line_to(x, height)
+            cr.stroke()
+
+        # Draw horizontal lines
+        for y in range(0, height, grid_spacing):
+            cr.move_to(0, y)
+            cr.line_to(width, y)
+            cr.stroke()
+
+    def draw_tray(self, cr, width, height):
+        # Map toolhead position to drawing area coordinates
+        x = self.toolhead_position['x']
+        y = self.toolhead_position['y']
+
+        # Set the toolhead color
+        cr.set_source_rgb(1.0, 0, 0)  # Red
+
+        # Define toolhead marker size
+        marker_size = 20  # pixels
+
+        # Draw the toolhead as a rectangle
+        cr.rectangle(x - marker_size / 2, y - marker_size / 2, marker_size, marker_size)
+        cr.fill()
+
+    def draw_targeted_tray(self, cr, width, height):
+        if self.targeted_toolhead_position['x'] is None or self.targeted_toolhead_position['y'] is None:
+            return  # No target set
+        # Map toolhead position to drawing area coordinates
+        x = self.targeted_toolhead_position['x']
+        y = self.targeted_toolhead_position['y']
+        # Set the toolhead color
+        cr.set_source_rgb(0, 1.0, 0)  # Red
+
+        # Define toolhead marker size
+        marker_size = 20  # pixels
+
+        # Draw the toolhead as a rectangle
+        cr.rectangle(x - marker_size / 2, y - marker_size / 2, marker_size, marker_size)
+        cr.fill()
