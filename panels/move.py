@@ -169,7 +169,7 @@ class Panel(ScreenPanel):
             self.scale_factor_x = 540 / x_range
             self.scale_factor_y = 540 / y_range
             self.scale_factor_z = 540 / z_range
-            
+
         homed_axes = self._printer.get_stat("toolhead", "homed_axes")
         if homed_axes == "xyz":
             if "gcode_move" in data and "gcode_position" in data["gcode_move"]:
@@ -244,7 +244,7 @@ class Panel(ScreenPanel):
             return True
         return False
 
-    def home_all(self):
+    def home_all(self, widget):
         self._screen._ws.klippy.gcode_script("G28")
 
     def on_draw(self, widget, cr):
@@ -532,7 +532,7 @@ class Panel(ScreenPanel):
 
             # Convert to actual coordinates
             mapped_x, mapped_y, mapped_z = self.grid_to_actual(0, 0, z)
-            self.target_z =int(mapped_z)
+            self.target_z =max(5,int(mapped_z))
 
             # Redraw the drawing area
             self.tray_drawing_area.queue_draw()
