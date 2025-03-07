@@ -306,7 +306,7 @@ class Panel(ScreenPanel):
     def update_toolhead_tray_position(self, x, y, z):
         if self.axis_minimum is None:
             return
-        mapped_x, mapped_y, mapped_z = self.actual_to_grid(x, y, z)
+        mapped_x, mapped_y, mapped_z = self.actual_to_grid(x, y, z) # flipped x,y
         self.toolhead_position['x'] = mapped_x
         self.toolhead_position['y'] = mapped_y
         self.tray_position = mapped_z
@@ -368,8 +368,8 @@ class Panel(ScreenPanel):
     def actual_to_grid(self, x, y, z=None):
         """Maps a (x, y) toolhead position to the 540x540 grid."""
         # Map the original coordinates. axis_minimum is flipped btw
-        grid_x = (x - self.axis_minimum[1]) * self.scale_factor_x
-        grid_y = (y - self.axis_minimum[0]) * self.scale_factor_y
+        grid_x = (x - self.axis_minimum[1]) * self.scale_factor_y
+        grid_y = (y - self.axis_minimum[0]) * self.scale_factor_x
 
         grid_z = None
         if z is not None and self.axis_minimum[2] is not None:
@@ -379,8 +379,8 @@ class Panel(ScreenPanel):
     
     def grid_to_actual(self, grid_x, grid_y, grid_z=None):
         # Convert grid coordinates back to real-world printer coordinates. axis_minimum is flipped btw
-        actual_x = (grid_x / self.scale_factor_x) + self.axis_minimum[1]
-        actual_y = (grid_y / self.scale_factor_y) + self.axis_minimum[0]
+        actual_x = (grid_x / self.scale_factor_x) + self.axis_minimum[0]
+        actual_y = (grid_y / self.scale_factor_y) + self.axis_minimum[1]
 
         actual_z = None
         if grid_z is not None and self.axis_minimum[2] is not None:
@@ -430,8 +430,8 @@ class Panel(ScreenPanel):
             self.targeted_toolhead_position['y'] = y
 
             # Convert to actual coordinates
-            mapped_x, mapped_y = self.grid_to_actual(x, y)
-            self.target_xy = [int(mapped_y), int(mapped_x)]  # Flip coordinates
+            mapped_x, mapped_y = self.grid_to_actual(y, x) # Flip coordinates
+            self.target_xy = [int(mapped_x), int(mapped_y)]  
 
             # Redraw the drawing area
             self.gantry_drawing_area.queue_draw()
