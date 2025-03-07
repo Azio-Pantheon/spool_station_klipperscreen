@@ -72,6 +72,7 @@ class Panel(ScreenPanel):
         self.target_xy = None
         self.target_z = None
         self.dragging_toolhead = False
+        self.marker_size = 40
 
         gantry_box = Gtk.Box()
         gantry_box.pack_start(self.gantry_drawing_area, False, False, 0)
@@ -280,11 +281,8 @@ class Panel(ScreenPanel):
         # Set the toolhead color
         cr.set_source_rgb(1.0, 0, 0)  # Red
 
-        # Define toolhead marker size
-        marker_size = 20  # pixels
-
         # Draw the toolhead as a rectangle
-        cr.rectangle(x - marker_size / 2, y - marker_size / 2, marker_size, marker_size)
+        cr.rectangle(x - self.marker_size / 2, y - self.marker_size / 2, self.marker_size, self.marker_size)
         cr.fill()
 
     def draw_targeted_toolhead(self, cr, width, height):
@@ -296,11 +294,8 @@ class Panel(ScreenPanel):
         # Set the toolhead color
         cr.set_source_rgb(0, 1.0, 0)  # Red
 
-        # Define toolhead marker size
-        marker_size = 20  # pixels
-
         # Draw the toolhead as a rectangle
-        cr.rectangle(x - marker_size / 2, y - marker_size / 2, marker_size, marker_size)
+        cr.rectangle(x - self.marker_size / 2, y - self.marker_size / 2, self.marker_size, self.marker_size)
         cr.fill()
 
     def update_toolhead_tray_position(self, x, y, z):
@@ -397,7 +392,7 @@ class Panel(ScreenPanel):
             # Check if the press is inside the toolhead rectangle
             tool_x = self.toolhead_position['x']
             tool_y = self.toolhead_position['y']
-            marker_size = 80  # triple the selection box so its easier to click
+            marker_size = 120  # triple the selection box so its easier to click
 
             if tool_x - marker_size / 2 <= x <= tool_x + marker_size / 2 and \
             tool_y - marker_size / 2 <= y <= tool_y + marker_size / 2:
@@ -471,11 +466,8 @@ class Panel(ScreenPanel):
         # Set the tray color
         cr.set_source_rgb(1.0, 0, 0)  # Red
 
-        # Define tray marker size
-        marker_size = 20  # pixels
-
         # Draw the tray as a rectangle
-        cr.rectangle((width / 2) - (marker_size / 2), z - marker_size / 2, marker_size, marker_size)
+        cr.rectangle((width / 2) - (self.marker_size / 2), z - self.marker_size / 2, self.marker_size, self.marker_size)
         cr.fill()
 
     def draw_targeted_tray(self, cr, width, height):
@@ -487,11 +479,8 @@ class Panel(ScreenPanel):
         # Set the tray color
         cr.set_source_rgb(0, 1.0, 0)  # Red
 
-        # Define tray marker size
-        marker_size = 20  # pixels
-
         # Draw the tray as a rectangle
-        cr.rectangle((width / 2) - (marker_size / 2), z - marker_size / 2, marker_size, marker_size)
+        cr.rectangle((width / 2) - (self.marker_size / 2), z - self.marker_size / 2, self.marker_size, self.marker_size)
         cr.fill()
 
     def on_tray_press(self, widget, event):
@@ -501,7 +490,7 @@ class Panel(ScreenPanel):
             y = event.y
 
             # Check if the press is inside the tray rectangle
-            marker_size = 100  # triple the selection box so its easier to click
+            marker_size = 120  # triple the selection box so its easier to click
 
             if 45 - marker_size / 2 <= x <= 45 + marker_size / 2 and \
             self.tray_position - marker_size / 2 <= y <= self.tray_position + marker_size / 2:
