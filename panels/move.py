@@ -467,7 +467,7 @@ class Panel(ScreenPanel):
         cr.set_source_rgb(1.0, 0, 0)  # Red
 
         # Draw the tray as a rectangle
-        cr.rectangle((width / 2) - (self.marker_size / 2), z - self.marker_size / 2, self.marker_size, self.marker_size)
+        cr.rectangle(5, z - self.marker_size / 4, 170, self.marker_size / 2)
         cr.fill()
 
     def draw_targeted_tray(self, cr, width, height):
@@ -480,7 +480,7 @@ class Panel(ScreenPanel):
         cr.set_source_rgb(0, 1.0, 0)  # Red
 
         # Draw the tray as a rectangle
-        cr.rectangle((width / 2) - (self.marker_size / 2), z - self.marker_size / 2, self.marker_size, self.marker_size)
+        cr.rectangle(5, z - self.marker_size / 4, 170, self.marker_size / 2)
         cr.fill()
 
     def on_tray_press(self, widget, event):
@@ -492,8 +492,7 @@ class Panel(ScreenPanel):
             # Check if the press is inside the tray rectangle
             marker_size = 140  # larger selection box so its easier to click
 
-            if 45 - marker_size / 2 <= x <= 45 + marker_size / 2 and \
-            self.tray_position - marker_size / 2 <= y <= self.tray_position + marker_size / 2:
+            if self.tray_position - marker_size / 2 <= y <= self.tray_position + marker_size / 2:
                 self.dragging_tray = True  # Enable dragging mode
 
     def on_tray_drag(self, widget, event):
