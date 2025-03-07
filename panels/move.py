@@ -532,7 +532,7 @@ class Panel(ScreenPanel):
 
             # Convert to actual coordinates
             mapped_x, mapped_y, mapped_z = self.grid_to_actual(0, 0, z)
-            self.target_z =max(5,int(mapped_z))
+            self.target_z =max(10,int(mapped_z))
 
             # Redraw the drawing area
             self.tray_drawing_area.queue_draw()
