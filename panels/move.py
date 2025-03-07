@@ -392,7 +392,7 @@ class Panel(ScreenPanel):
             # Check if the press is inside the toolhead rectangle
             tool_x = self.toolhead_position['x']
             tool_y = self.toolhead_position['y']
-            marker_size = 120  # triple the selection box so its easier to click
+            marker_size = 140  # larger the selection box so its easier to click
 
             if tool_x - marker_size / 2 <= x <= tool_x + marker_size / 2 and \
             tool_y - marker_size / 2 <= y <= tool_y + marker_size / 2:
@@ -490,7 +490,7 @@ class Panel(ScreenPanel):
             y = event.y
 
             # Check if the press is inside the tray rectangle
-            marker_size = 120  # triple the selection box so its easier to click
+            marker_size = 140  # larger selection box so its easier to click
 
             if 45 - marker_size / 2 <= x <= 45 + marker_size / 2 and \
             self.tray_position - marker_size / 2 <= y <= self.tray_position + marker_size / 2:
