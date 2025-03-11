@@ -250,7 +250,7 @@ class KlipperScreenConfig:
                 "value": "medium"}},
             {"time_zone": {
                 "section": "main", "name": _("Time Zone"), "type": "dropdown",
-                "value": "medium", "callback": screen.change_time_zone, "options": [
+                "value": "America/Vancouver", "callback": screen.change_time_zone, "options": [
                     {"name": _("(UTC-08:00) Pacific Standard Time (US & Canada)"), "value": "America/Vancouver"},
                     {"name": _("(UTC-07:00) Mountain Time (US & Canada)"), "value": "America/Boise"},
                     {"name": _("(UTC-06:00) Central Time (US & Canada)"), "value": "America/Chicago"},
