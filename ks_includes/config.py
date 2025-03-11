@@ -158,7 +158,7 @@ class KlipperScreenConfig:
                 bools = (
                     'invert_x', 'invert_y', 'invert_z', '24htime', 'only_heaters', 'show_cursor', 'confirm_estop',
                     'autoclose_popups', 'use_dpms', 'use_default_menu', 'side_macro_shortcut', 'use-matchbox-keyboard',
-                    'show_heater_power', "show_scroll_steppers", "auto_open_extrude", 'enable_prime'
+                    'show_heater_power', "show_scroll_steppers", "auto_open_extrude", 'enable_prime', 'enable_wet_filament_purge'
                 )
                 strs = (
                     'default_printer', 'language', 'print_sort_dir', 'theme', 'screen_blanking', 'font_size',
@@ -286,7 +286,9 @@ class KlipperScreenConfig:
             {"autoclose_popups": {"section": "main", "name": _("Auto Close Popups"), "type": "binary",
                                "value": "False"}},
             {"enable_prime": {"section": "main", "name": _("Enable Prime"), "type": "binary",
-                               "value": "True", "callback": screen.toggle_enable_prime}},           
+                               "value": "True", "callback": screen.toggle_enable_prime}},
+            {"enable_wet_filament_purge": {"section": "main", "name": _("Enable Wet Filament Purge"), "type": "binary",
+                               "value": "True", "callback": screen.toggle_enable_wet_filament_purge}},         
             # {"": {"section": "main", "name": _(""), "type": ""}}
         ]
 
