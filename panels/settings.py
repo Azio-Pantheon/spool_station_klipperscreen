@@ -3,6 +3,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Pango
 from ks_includes.screen_panel import ScreenPanel
+import time
 
 
 class Panel(ScreenPanel):
@@ -76,6 +77,7 @@ class Panel(ScreenPanel):
             dropdown.connect("changed", self.on_dropdown_change, option['section'], opt_name,
                              option['callback'] if "callback" in option else None)
             dropdown.set_entry_text_column(0)
+            dropdown.connect("notify::popup-shown", self.on_dropdown_popup_shown)
             dev.add(dropdown)
         elif option['type'] == "scale":
             dev.set_orientation(Gtk.Orientation.VERTICAL)
@@ -110,3 +112,6 @@ class Panel(ScreenPanel):
         self.labels[boxname].insert_row(pos)
         self.labels[boxname].attach(opt_array[opt_name]['row'], 0, pos, 1, 1)
         self.labels[boxname].show_all()
+        
+    def on_dropdown_popup_shown(self, widget, _param):
+        time.sleep(0.1)
