@@ -1250,6 +1250,30 @@ class KlipperScreen(Gtk.Window):
             handle_response  # Callback function
         )
 
+    def toggle_enable_wet_filament_purge(self, switch):
+        enable_wet_filament_purge = 1 if switch else 0
+
+        # Define a callback to handle Moonraker's response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self.show_popup_message(
+                    f"Failed to update enable_wet_filament_purge: {response['error']['message']}",
+                    level=3
+                )
+            else:
+                state_str = "enabled" if enable_wet_filament_purge else "disabled"
+                self.show_popup_message(f"Wet Filament Purge {state_str}.", level=1)
+
+        # Send new state to Moonraker
+        self._ws.send_method(
+            "server.database.post_item",
+            {
+                "namespace": "HS3", 
+                "key": "wet_filament_purge",  
+                "value": enable_wet_filament_purge
+            },
+            handle_response  # Callback function
+        )
 
 def main():
     minimum = (3, 7)

@@ -158,7 +158,7 @@ class KlipperScreenConfig:
                 bools = (
                     'invert_x', 'invert_y', 'invert_z', '24htime', 'only_heaters', 'show_cursor', 'confirm_estop',
                     'autoclose_popups', 'use_dpms', 'use_default_menu', 'side_macro_shortcut', 'use-matchbox-keyboard',
-                    'show_heater_power', "show_scroll_steppers", "auto_open_extrude", 'enable_prime'
+                    'show_heater_power', "show_scroll_steppers", "auto_open_extrude", 'enable_prime', 'enable_wet_filament_purge'
                 )
                 strs = (
                     'default_printer', 'language', 'print_sort_dir', 'theme', 'screen_blanking', 'font_size',
@@ -238,29 +238,19 @@ class KlipperScreenConfig:
 
         self.configurable_options = [
             {"language": {
-                "section": "main", "name": _("Language"), "type": None, "value": "system_lang",
-                "callback": screen.change_language, "options": [
-                    {"name": _("System") + " " + _("(default)"), "value": "system_lang"}]}},
+                "section": "main", "name": _("Language"), "type": None, "value": "system_lang"}},
             {"theme": {
-                "section": "main", "name": _("Icon Theme"), "type": "dropdown",
-                "value": "Pantheon", "callback": screen.restart_ks, "options": [
-                    {"name": "Pantheon" + " " + _("(default)"), "value": "Pantheon"}]}},
+                "section": "main", "name": _("Icon Theme"), "type": None,
+                "value": "Pantheon"}},
             {"screen_blanking": {
-                "section": "main", "name": _("Screen Power Off Time"), "type": "dropdown",
-                "value": "3600", "callback": screen.set_screenblanking_timeout, "options": [
-                    {"name": _("Never"), "value": "off"}]
-            }},
+                "section": "main", "name": _("Screen Power Off Time"), "type": None,
+                "value": "3600"}},
             {"font_size": {
-                "section": "main", "name": _("Font Size"), "type": "dropdown",
-                "value": "medium", "callback": screen.restart_ks, "options": [
-                    {"name": _("Small"), "value": "small"},
-                    {"name": _("Medium") + " " + _("(default)"), "value": "medium"},
-                    {"name": _("Large"), "value": "large"},
-                    {"name": _("Extra Large"), "value": "extralarge"},
-                    {"name": _("Maximum"), "value": "max"}]}},
+                "section": "main", "name": _("Font Size"), "type": None,
+                "value": "medium"}},
             {"time_zone": {
                 "section": "main", "name": _("Time Zone"), "type": "dropdown",
-                "value": "medium", "callback": screen.change_time_zone, "options": [
+                "value": "America/Vancouver", "callback": screen.change_time_zone, "options": [
                     {"name": _("(UTC-08:00) Pacific Standard Time (US & Canada)"), "value": "America/Vancouver"},
                     {"name": _("(UTC-07:00) Mountain Time (US & Canada)"), "value": "America/Boise"},
                     {"name": _("(UTC-06:00) Central Time (US & Canada)"), "value": "America/Chicago"},
@@ -296,7 +286,9 @@ class KlipperScreenConfig:
             {"autoclose_popups": {"section": "main", "name": _("Auto Close Popups"), "type": "binary",
                                "value": "False"}},
             {"enable_prime": {"section": "main", "name": _("Enable Prime"), "type": "binary",
-                               "value": "True", "callback": screen.toggle_enable_prime}},           
+                               "value": "True", "callback": screen.toggle_enable_prime}},
+            {"enable_wet_filament_purge": {"section": "main", "name": _("Enable Wet Filament Purge"), "type": "binary",
+                               "value": "True", "callback": screen.toggle_enable_wet_filament_purge}},         
             # {"": {"section": "main", "name": _(""), "type": ""}}
         ]
 
@@ -312,29 +304,6 @@ class KlipperScreenConfig:
         ]
 
         self.configurable_options.extend(panel_options)
-
-        t_path = os.path.join(klipperscreendir, 'styles')
-        themes = [d for d in os.listdir(t_path) if (not os.path.isfile(os.path.join(t_path, d)) and "Pantheon" in d and d != "Pantheon")]
-        
-        themes.sort()
-        theme_opt = self.configurable_options[1]['theme']['options']
-
-        for theme in themes:
-            theme_opt.append({"name": theme, "value": theme})
-
-        index = self.configurable_options.index(
-            [i for i in self.configurable_options if list(i)[0] == "screen_blanking"][0])
-        for num in SCREEN_BLANKING_OPTIONS:
-            hour = num // 3600
-            minute = num / 60
-            if hour > 0:
-                name = f'{hour} ' + ngettext("hour", "hours", hour)
-            else:
-                name = f'{minute:.0f} ' + ngettext("minute", "minutes", minute)
-            self.configurable_options[index]['screen_blanking']['options'].append({
-                "name": name,
-                "value": f"{num}"
-            })
 
         for item in self.configurable_options:
             name = list(item)[0]

@@ -3,6 +3,7 @@ import gi
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Pango
 from ks_includes.screen_panel import ScreenPanel
+import time
 
 
 class Panel(ScreenPanel):
@@ -11,11 +12,7 @@ class Panel(ScreenPanel):
         self.printers = self.settings = self.langs = {}
         self.menu = ['settings_menu']
         options = self._config.get_configurable_options().copy()
-        options.append({"lang": {
-            "name": _("Language"),
-            "type": "menu",
-            "menu": "lang"
-        }})
+
 
         self.labels['settings_menu'] = self._gtk.ScrolledWindow()
         self.labels['settings'] = Gtk.Grid()
@@ -23,16 +20,6 @@ class Panel(ScreenPanel):
         for option in options:
             name = list(option)[0]
             self.add_option('settings', self.settings, name, option[name])
-
-        self.labels['lang_menu'] = self._gtk.ScrolledWindow()
-        self.labels['lang'] = Gtk.Grid()
-        self.labels['lang_menu'].add(self.labels['lang'])
-        for lang in self._config.lang_list:
-            self.langs[lang] = {
-                "name": lang,
-                "type": "lang",
-            }
-            self.add_option("lang", self.langs, lang, self.langs[lang])
 
         self.labels['printers_menu'] = self._gtk.ScrolledWindow()
         self.labels['printers'] = Gtk.Grid()
@@ -90,6 +77,7 @@ class Panel(ScreenPanel):
             dropdown.connect("changed", self.on_dropdown_change, option['section'], opt_name,
                              option['callback'] if "callback" in option else None)
             dropdown.set_entry_text_column(0)
+            dropdown.connect("notify::popup-shown", self.on_dropdown_popup_shown)
             dev.add(dropdown)
         elif option['type'] == "scale":
             dev.set_orientation(Gtk.Orientation.VERTICAL)
@@ -111,12 +99,7 @@ class Panel(ScreenPanel):
             open_menu.set_hexpand(False)
             open_menu.set_halign(Gtk.Align.END)
             dev.add(open_menu)
-        elif option['type'] == "lang":
-            select = self._gtk.Button("load", style="color3")
-            select.connect("clicked", self._screen.change_language, option['name'])
-            select.set_hexpand(False)
-            select.set_halign(Gtk.Align.END)
-            dev.add(select)
+
 
         opt_array[opt_name] = {
             "name": option['name'],
@@ -129,3 +112,6 @@ class Panel(ScreenPanel):
         self.labels[boxname].insert_row(pos)
         self.labels[boxname].attach(opt_array[opt_name]['row'], 0, pos, 1, 1)
         self.labels[boxname].show_all()
+        
+    def on_dropdown_popup_shown(self, widget, _param):
+        time.sleep(0.1)
