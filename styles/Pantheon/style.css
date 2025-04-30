@@ -332,3 +332,9 @@ textview .time {
 .confirmPrintDialog{
     background-color: @pantheon-background-grey;
 }
+
+button.color1.selected {
+    border: 2px solid @pantheon-mint;
+    border-bottom-color: @pantheon-mint;
+    opacity: 0.5
+}

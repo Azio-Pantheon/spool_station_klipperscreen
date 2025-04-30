@@ -1,9 +1,10 @@
 import re
 import logging
 import gi
+import cairo
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Pango
+from gi.repository import Gtk, Pango, Gdk, GdkPixbuf
 from ks_includes.KlippyGcodes import KlippyGcodes
 from ks_includes.screen_panel import ScreenPanel
 
@@ -26,88 +27,103 @@ class Panel(ScreenPanel):
         self.settings = {}
         self.menu = ['move_menu']
         self.buttons = {
-            'x+': self._gtk.Button("arrow-down", "X+", "color1"),
-            'x-': self._gtk.Button("arrow-up", "X-", "color1"),
-            'y+': self._gtk.Button("arrow-right", "Y+", "color2"),
-            'y-': self._gtk.Button("arrow-left", "Y-", "color2"),
-            'z+': self._gtk.Button("z-farther", "Bed Up", "color3"),    #Z+
-            'z-': self._gtk.Button("z-closer", "Bed Down", "color3"),     #Z-
-            'home': self._gtk.Button("home", _("Home"), "color4"),
-            'motors_off': self._gtk.Button("motor-off", _("Disable Motors"), "color4"),
+            'home': self._gtk.Button("home", _("Home All"), "color1"),
+            'precise_move': self._gtk.Button("move","Precise Move","color1") 
         }
-        self.buttons['x+'].connect("clicked", self.move, "X", "+")
-        self.buttons['x-'].connect("clicked", self.move, "X", "-")
-        self.buttons['y+'].connect("clicked", self.move, "Y", "+")
-        self.buttons['y-'].connect("clicked", self.move, "Y", "-")
-        self.buttons['z+'].connect("clicked", self.move, "Z", "+")
-        self.buttons['z-'].connect("clicked", self.move, "Z", "-")
-        self.buttons['home'].connect("clicked", self.home)
-        script = {"script": "M18"}
-        self.buttons['motors_off'].connect("clicked", self._screen._confirm_send_action,
-                                           _("Are you sure you wish to disable motors?"),
-                                           "printer.gcode.script", script)
+
+        self.buttons['home'].connect("clicked", self.home_all)
+        
         adjust = self._gtk.Button("settings", None, "color2", 1, Gtk.PositionType.LEFT, 1)
         adjust.connect("clicked", self.load_menu, 'options', _('Settings'))
         adjust.set_hexpand(False)
+
+        self.buttons['precise_move'].connect("clicked", self.menu_item_clicked, {
+            "panel": "precise_move", "name": _("Precise Move")})
+
         grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
-        if self._screen.vertical_mode:
-            if self._screen.lang_ltr:
-                grid.attach(self.buttons['y+'], 2, 1, 1, 1)
-                grid.attach(self.buttons['y-'], 0, 1, 1, 1)
-                grid.attach(self.buttons['z+'], 2, 2, 1, 1)
-                grid.attach(self.buttons['z-'], 0, 2, 1, 1)
-            else:
-                grid.attach(self.buttons['y+'], 0, 1, 1, 1)
-                grid.attach(self.buttons['y-'], 2, 1, 1, 1)
-                grid.attach(self.buttons['z+'], 0, 2, 1, 1)
-                grid.attach(self.buttons['z-'], 2, 2, 1, 1)
-            grid.attach(self.buttons['x-'], 1, 0, 1, 1)
-            grid.attach(self.buttons['x+'], 1, 1, 1, 1)
-
-        else:
-            if self._screen.lang_ltr:
-                grid.attach(self.buttons['y+'], 2, 1, 1, 1)
-                grid.attach(self.buttons['y-'], 0, 1, 1, 1)
-            else:
-                grid.attach(self.buttons['y+'], 0, 1, 1, 1)
-                grid.attach(self.buttons['y-'], 2, 1, 1, 1)
-            grid.attach(self.buttons['x-'], 1, 0, 1, 1)
-            grid.attach(self.buttons['x+'], 1, 1, 1, 1)
-            grid.attach(self.buttons['z+'], 3, 0, 1, 1)
-            grid.attach(self.buttons['z-'], 3, 1, 1, 1)
-
         grid.attach(self.buttons['home'], 0, 0, 1, 1)
-        grid.attach(self.buttons['motors_off'], 2, 0, 1, 1)
+        grid.attach(self.buttons['precise_move'], 0, 1, 1, 1)
 
-        distgrid = Gtk.Grid()
-        for j, i in enumerate(self.distances):
-            self.labels[i] = self._gtk.Button(label=i)
-            self.labels[i].set_direction(Gtk.TextDirection.LTR)
-            self.labels[i].connect("clicked", self.change_distance, i)
-            ctx = self.labels[i].get_style_context()
-            ctx.add_class("horizontal_togglebuttons")
-            if i == self.distance:
-                ctx.add_class("horizontal_togglebuttons_active")
-            distgrid.attach(self.labels[i], j, 0, 1, 1)
+        ###### Create the gantry drawing area
+        self.gantry_image = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+            "/home/hs3/KlipperScreen/styles/Pantheon/images/gantry_image.png",  # Replace with your actual file path
+            540, 540,  # Set background size
+            False  # Preserve aspect ratio
+        )
+
+        #self.toolhead_image = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+        #    "/path/to/toolhead.png",  # Replace with your actual file path
+        #    40, 40,  # Scale toolhead size (adjust as needed)
+        #    True  # Preserve aspect ratio
+        #)
+        self.gantry_drawing_area = Gtk.DrawingArea()
+        self.gantry_drawing_area.set_size_request(540, 540)
+        self.gantry_drawing_area.connect("draw", self.on_draw)
+        # Initialize toolhead position
+        self.toolhead_position = {'x': 0, 'y': 0}
+        self.targeted_toolhead_position= {'x': None, 'y': None}
+        self.axis_maximum = None
+        self.axis_minimum = None
+
+        self.scale_factor_x = None
+        self.scale_factor_y = None
+        self.scale_factor_z = None
+
+        self.target_xy = None
+        self.target_z = None
+        self.dragging_toolhead = False
+        self.marker_size = 40
+
+        gantry_box = Gtk.Box()
+        gantry_box.pack_start(self.gantry_drawing_area, False, False, 0)
+        #Enable touch events
+        self.gantry_drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.POINTER_MOTION_MASK)        
+        self.gantry_drawing_area.connect("button-press-event", self.on_toolhead_press)
+        self.gantry_drawing_area.connect("motion-notify-event", self.on_toolhead_drag)
+        self.gantry_drawing_area.connect("button-release-event", self.on_toolhead_release)
+        
+        ###### Create the build tray drawing area
+        self.tray_image = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+            "/home/hs3/KlipperScreen/styles/Pantheon/images/build_tray_image.png",  # Replace with your actual file path
+            180, 540,  # Set background size
+            False  # Preserve aspect ratio
+        )
+        self.tray_drawing_area = Gtk.DrawingArea()
+        self.tray_drawing_area.set_size_request(180, 540)
+        self.tray_drawing_area.connect("draw", self.tray_on_draw)
+        # Initialize tray position
+        self.tray_position = 0
+        self.targeted_tray_position= None
+        self.dragging_tray = False
+
+        tray_box = Gtk.Box()
+        tray_box.pack_start(self.tray_drawing_area, False, False, 0)
+        #Enable touch events
+        self.tray_drawing_area.set_events(Gdk.EventMask.BUTTON_PRESS_MASK | Gdk.EventMask.BUTTON_RELEASE_MASK | Gdk.EventMask.POINTER_MOTION_MASK)        
+        self.tray_drawing_area.connect("button-press-event", self.on_tray_press)
+        self.tray_drawing_area.connect("motion-notify-event", self.on_tray_drag)
+        self.tray_drawing_area.connect("button-release-event", self.on_tray_release)
+
 
         for p in ('pos_x', 'pos_y', 'pos_z'):
             self.labels[p] = Gtk.Label()
-        self.labels['move_dist'] = Gtk.Label(label=_("Move Distance (mm)"))
 
         bottomgrid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
         bottomgrid.set_direction(Gtk.TextDirection.LTR)
         bottomgrid.attach(self.labels['pos_x'], 0, 0, 1, 1)
         bottomgrid.attach(self.labels['pos_y'], 1, 0, 1, 1)
         bottomgrid.attach(self.labels['pos_z'], 2, 0, 1, 1)
-        bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
+        #bottomgrid.attach(self.labels['move_dist'], 0, 1, 3, 1)
 
-        self.labels['move_menu'] = Gtk.Grid(row_homogeneous=True, column_homogeneous=True)
-        self.labels['move_menu'].attach(grid, 0, 0, 1, 3)
-        self.labels['move_menu'].attach(bottomgrid, 0, 3, 1, 1)
-        self.labels['move_menu'].attach(distgrid, 0, 4, 1, 1)
+        self.labels['move_menu'] = Gtk.Grid(row_homogeneous=False, column_homogeneous=False)
+        self.labels['move_menu'].set_column_spacing(20)  # Adds 10px padding between columns
 
+        self.labels['move_menu'].attach(grid, 4, 0, 2, 3)
+        self.labels['move_menu'].attach(bottomgrid, 0, 4, 4, 1)
+        
+        self.labels['move_menu'].attach(gantry_box, 0, 0, 3, 3)
+        self.labels['move_menu'].attach(tray_box, 3, 0, 1, 3)
         self.content.add(self.labels['move_menu'])
-
         printer_cfg = self._printer.get_config_section("printer")
         # The max_velocity parameter is not optional in klipper config.
         max_velocity = int(float(printer_cfg["max_velocity"]))
@@ -130,7 +146,6 @@ class Panel(ScreenPanel):
                 "section": "main", "name": _("Z Speed (mm/s)"), "type": "scale", "value": "10",
                 "range": [1, max_z_velocity], "step": 1}}
         ]
-
         self.labels['options_menu'] = self._gtk.ScrolledWindow()
         self.labels['options'] = Gtk.Grid()
         self.labels['options_menu'].add(self.labels['options'])
@@ -141,12 +156,28 @@ class Panel(ScreenPanel):
     def process_update(self, action, data):
         if action != "notify_status_update":
             return
+
+        if self._printer.get_stat("toolhead", "axis_maximum") is not None and self.axis_maximum is None:
+            self.axis_maximum = self._printer.get_stat("toolhead", "axis_maximum")
+
+        if self._printer.get_stat("toolhead", "axis_minimum") is not None and self.axis_minimum is None:
+            self.axis_minimum = self._printer.get_stat("toolhead", "axis_minimum")
+            # Calculate total range for X and Y and Z
+            x_range = self.axis_maximum[0] - self.axis_minimum[0]  # X max - X min
+            y_range = self.axis_maximum[1] - self.axis_minimum[1]  # Y max - Y min
+            z_range = self.axis_maximum[2] - self.axis_minimum[2]  # Z max - Z min
+            # Choose the scaling factor based on the larger range (maintaining aspect ratio)
+            self.scale_factor_x = 540 / x_range
+            self.scale_factor_y = 540 / y_range
+            self.scale_factor_z = 540 / z_range
+
         homed_axes = self._printer.get_stat("toolhead", "homed_axes")
         if homed_axes == "xyz":
             if "gcode_move" in data and "gcode_position" in data["gcode_move"]:
                 self.labels['pos_x'].set_text(f"X: {data['gcode_move']['gcode_position'][0]:.2f}")
                 self.labels['pos_y'].set_text(f"Y: {data['gcode_move']['gcode_position'][1]:.2f}")
                 self.labels['pos_z'].set_text(f"Z: {data['gcode_move']['gcode_position'][2]:.2f}")
+                self.update_toolhead_tray_position(data['gcode_move']['gcode_position'][1],data['gcode_move']['gcode_position'][0],data['gcode_move']['gcode_position'][2])
         else:
             if "x" in homed_axes:
                 if "gcode_move" in data and "gcode_position" in data["gcode_move"]:
@@ -164,26 +195,8 @@ class Panel(ScreenPanel):
             else:
                 self.labels['pos_z'].set_text("Z: ?")
 
-    def change_distance(self, widget, distance):
-        logging.info(f"### Distance {distance}")
-        self.labels[f"{self.distance}"].get_style_context().remove_class("horizontal_togglebuttons_active")
-        self.labels[f"{distance}"].get_style_context().add_class("horizontal_togglebuttons_active")
-        self.distance = distance
 
-    def move(self, widget, axis, direction):
-        if self._config.get_config()['main'].getboolean(f"invert_{axis.lower()}", False):
-            direction = "-" if direction == "+" else "+"
 
-        dist = f"{direction}{self.distance}"
-        config_key = "move_speed_z" if axis == "Z" else "move_speed_xy"
-        speed = None if self.ks_printer_cfg is None else self.ks_printer_cfg.getint(config_key, None)
-        if speed is None:
-            speed = self._config.get_config()['main'].getint(config_key, 20)
-        speed = 60 * max(1, speed)
-        script = f"{KlippyGcodes.MOVE_RELATIVE}\nG0 {axis}{dist} F{speed}"
-        self._screen._send_action(widget, "printer.gcode.script", {"script": script})
-        if self._printer.get_stat("gcode_move", "absolute_coordinates"):
-            self._screen._ws.klippy.gcode_script("G90")
 
     def add_option(self, boxname, opt_array, opt_name, option):
         name = Gtk.Label(hexpand=True, vexpand=True, halign=Gtk.Align.START, valign=Gtk.Align.CENTER, wrap=True)
@@ -232,11 +245,284 @@ class Panel(ScreenPanel):
             return True
         return False
 
-    def home(self, widget):
-        if "delta" in self._printer.get_config_section("printer")['kinematics']:
-            self._screen._send_action(widget, "printer.gcode.script", {"script": 'G28'})
+    def home_all(self, widget):
+        self._screen._ws.klippy.gcode_script("G28")
+
+    def on_draw(self, widget, cr):
+        # Get the dimensions of the drawing area
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+        #width = 540
+        #height = 540
+        # Draw the grid
+        self.draw_background(cr, width, height)
+
+        # Draw the toolhead position
+        self.draw_toolhead(cr, width, height)
+        # Draw the targeted toolhead position
+        self.draw_targeted_toolhead(cr, width, height)
+        
+
+    def draw_background(self, cr, width, height):
+        """Draws the background image instead of a grid."""
+
+        # Convert Pixbuf to Cairo Image
+        image_surface = Gdk.cairo_surface_create_from_pixbuf(self.gantry_image, 1)
+
+        # Draw the background image
+        cr.set_source_surface(image_surface, 0, 0)
+        cr.paint()
+
+    def draw_toolhead(self, cr, width, height):
+        # Map toolhead position to drawing area coordinates
+        x = self.toolhead_position['x']
+        y = self.toolhead_position['y']
+
+        # Set the toolhead color
+        cr.set_source_rgb(1.0, 0, 0)  # Red
+
+        # Draw the toolhead as a rectangle
+        cr.rectangle(x - self.marker_size / 2, y - self.marker_size / 2, self.marker_size, self.marker_size)
+        cr.fill()
+
+    def draw_targeted_toolhead(self, cr, width, height):
+        if self.targeted_toolhead_position['x'] is None or self.targeted_toolhead_position['y'] is None:
+            return  # No target set
+        # Map toolhead position to drawing area coordinates
+        x = self.targeted_toolhead_position['x']
+        y = self.targeted_toolhead_position['y']
+        # Set the toolhead color
+        cr.set_source_rgb(0, 1.0, 0)  # Red
+
+        # Draw the toolhead as a rectangle
+        cr.rectangle(x - self.marker_size / 2, y - self.marker_size / 2, self.marker_size, self.marker_size)
+        cr.fill()
+
+    def update_toolhead_tray_position(self, x, y, z):
+        if self.axis_minimum is None:
             return
-        name = "homing"
-        disname = self._screen._config.get_menu_name("move", name)
-        menuitems = self._screen._config.get_menu_items("move", name)
-        self._screen.show_panel("menu", disname, items=menuitems)
+        mapped_x, mapped_y, mapped_z = self.actual_to_grid(x, y, z) # flipped x,y
+        self.toolhead_position['x'] = mapped_x
+        self.toolhead_position['y'] = mapped_y
+        self.tray_position = mapped_z
+        # If toolhead reaches the target, clear the target
+        if (self.targeted_toolhead_position['x'] is not None and self.targeted_toolhead_position['y'] is not None and
+            int(x) == int(self.targeted_toolhead_position['x']) and
+            int(y) == int(self.targeted_toolhead_position['y'])):
+            self.targeted_toolhead_position = {'x': None, 'y': None}  # Clear the target
+
+        # If tray reaches the target, clear the target
+        if (self.targeted_tray_position is not None and self.targeted_tray_position is not None and
+            int(z) == int(self.targeted_tray_position)):
+            self.targeted_tray_position = None  # Clear the target
+
+        # Redraw the drawing area
+        self.gantry_drawing_area.queue_draw()
+        self.tray_drawing_area.queue_draw()
+
+
+    def confirm_move(self, widget):
+        """Sends the move command and clears the selection."""
+        if self.target_xy is None and self.target_z is None:
+            self._screen.show_popup_message("No position is selected!", level=2)
+            return  # No action if nothing is selected
+
+        move_command = "G90\nG0"  # Absolute positioning move
+        # Handle XY movement
+        if self.target_xy is not None:
+            x, y = self.target_xy
+            move_command += f" X{x} Y{y}"
+            speed = self.ks_printer_cfg.getint("move_speed_xy", None) if self.ks_printer_cfg else None
+            if speed is None:
+                speed = self._config.get_config()['main'].getint("move_speed_xy", 20)
+            speed = 60 * max(1, speed)  # Convert to mm/min
+
+        # Handle Z movement
+        if self.target_z is not None:
+            move_command += f" Z{self.target_z}"
+            speed = self.ks_printer_cfg.getint("move_speed_z", None) if self.ks_printer_cfg else None
+            if speed is None:
+                speed = self._config.get_config()['main'].getint("move_speed_z", 20)
+            speed = 60 * max(1, speed)  # Convert to mm/min
+
+        # Add speed to the move command
+        move_command += f" F{speed}"
+
+        # Send the command to Klipper
+        self._screen._send_action(widget, "printer.gcode.script", {"script": move_command})
+
+        # Reset target positions after move
+        self.target_xy = None
+        self.target_z = None
+        self.targeted_toolhead_position = {'x': None, 'y': None}
+        self.targeted_tray_position = None
+
+        if not self._printer.get_stat("gcode_move", "absolute_coordinates"):
+            self._screen._ws.klippy.gcode_script("G90")
+
+    def actual_to_grid(self, x, y, z=None):
+        """Maps a (x, y) toolhead position to the 540x540 grid."""
+        # Map the original coordinates. axis_minimum is flipped btw
+        grid_x = (x - self.axis_minimum[1]) * self.scale_factor_y
+        grid_y = (y - self.axis_minimum[0]) * self.scale_factor_x
+
+        grid_z = None
+        if z is not None and self.axis_minimum[2] is not None:
+            grid_z = (z - self.axis_minimum[2]) * self.scale_factor_z
+
+        return (grid_x, grid_y, grid_z) if z is not None else (grid_x, grid_y)
+    
+    def grid_to_actual(self, grid_x, grid_y, grid_z=None):
+        # Convert grid coordinates back to real-world printer coordinates. axis_minimum is flipped btw
+        actual_x = (grid_x / self.scale_factor_x) + self.axis_minimum[0]
+        actual_y = (grid_y / self.scale_factor_y) + self.axis_minimum[1]
+
+        actual_z = None
+        if grid_z is not None and self.axis_minimum[2] is not None:
+            actual_z = (grid_z / self.scale_factor_z) + self.axis_minimum[2]
+
+        return (actual_x, actual_y, actual_z) if grid_z is not None else (actual_x, actual_y)
+    
+    def on_toolhead_press(self, widget, event):
+        """Handles user press on the toolhead to start dragging."""
+        if event.button == 1:  # Left mouse button or touch
+            x = event.x
+            y = event.y
+
+            # Check if the press is inside the toolhead rectangle
+            tool_x = self.toolhead_position['x']
+            tool_y = self.toolhead_position['y']
+            marker_size = 140  # larger the selection box so its easier to click
+
+            if tool_x - marker_size / 2 <= x <= tool_x + marker_size / 2 and \
+            tool_y - marker_size / 2 <= y <= tool_y + marker_size / 2:
+                self.dragging_toolhead = True  # Enable dragging mode
+
+    def on_toolhead_drag(self, widget, event):
+        """Handles dragging movement while the user moves the toolhead."""
+        if self.dragging_toolhead:  # Only move if dragging is active
+            x = max(0, min(int(event.x), 540))
+            y = max(0, min(int(event.y), 540))
+
+            # Update the toolhead position while dragging
+            #self.toolhead_position['x'] = x
+            #self.toolhead_position['y'] = y
+            self.targeted_toolhead_position['x'] = x
+            self.targeted_toolhead_position['y'] = y
+            # Redraw the drawing area to reflect new position
+            self.gantry_drawing_area.queue_draw()
+
+    def on_toolhead_release(self, widget, event):
+        """Handles user releasing the toolhead to set the final position."""
+        if self.dragging_toolhead:
+            self.dragging_toolhead = False  # Disable dragging mode
+
+            x = max(0, min(int(event.x), 540))
+            y = max(0, min(int(event.y), 540))
+
+            # Set the target position based on the final dragged position
+            self.targeted_toolhead_position['x'] = x
+            self.targeted_toolhead_position['y'] = y
+
+            # Convert to actual coordinates
+            mapped_x, mapped_y = self.grid_to_actual(y, x) # Flip coordinates
+            self.target_xy = [int(mapped_x), int(mapped_y)]  
+
+            # Redraw the drawing area
+            self.gantry_drawing_area.queue_draw()
+
+            self.confirm_move(widget)
+
+    def tray_on_draw(self, widget, cr):
+        # Get the dimensions of the drawing area
+        width = widget.get_allocated_width()
+        height = widget.get_allocated_height()
+        #width = 540
+        #height = 540
+        # Draw the grid
+        self.draw_tray_background(cr, width, height)
+
+        # Draw the tray position
+        self.draw_tray(cr, width, height)
+        # Draw the targeted tray position
+        self.draw_targeted_tray(cr, width, height)
+        
+
+    def draw_tray_background(self, cr, width, height):
+        """Draws the background image instead of a grid."""
+
+        # Convert Pixbuf to Cairo Image
+        image_surface = Gdk.cairo_surface_create_from_pixbuf(self.tray_image, 1)
+
+        # Draw the background image
+        cr.set_source_surface(image_surface, 0, 0)
+        cr.paint()
+
+    def draw_tray(self, cr, width, height):
+
+        # Map tray position to drawing area coordinates
+        z = self.tray_position
+ 
+        # Set the tray color
+        cr.set_source_rgb(1.0, 0, 0)  # Red
+
+        # Draw the tray as a rectangle
+        cr.rectangle(5, z - self.marker_size / 4, 170, self.marker_size / 2)
+        cr.fill()
+
+    def draw_targeted_tray(self, cr, width, height):
+        if self.targeted_tray_position is None:
+            return  # No target set
+        # Map tray position to drawing area coordinates
+        z = self.targeted_tray_position
+
+        # Set the tray color
+        cr.set_source_rgb(0, 1.0, 0)  # Red
+
+        # Draw the tray as a rectangle
+        cr.rectangle(5, z - self.marker_size / 4, 170, self.marker_size / 2)
+        cr.fill()
+
+    def on_tray_press(self, widget, event):
+        """Handles user press on the tray to start dragging."""
+        if event.button == 1:  # Left mouse button or touch
+            x = event.x
+            y = event.y
+
+            # Check if the press is inside the tray rectangle
+            marker_size = 140  # larger selection box so its easier to click
+
+            if self.tray_position - marker_size / 2 <= y <= self.tray_position + marker_size / 2:
+                self.dragging_tray = True  # Enable dragging mode
+
+    def on_tray_drag(self, widget, event):
+        """Handles dragging movement while the user moves the tray."""
+        if self.dragging_tray:  # Only move if dragging is active
+            z = max(0, min(int(event.y), 540))
+
+
+            # Update the tray position while dragging
+
+            self.targeted_tray_position = z
+
+            # Redraw the drawing area to reflect new position
+            self.tray_drawing_area.queue_draw()
+
+    def on_tray_release(self, widget, event):
+        """Handles user releasing the toolhead to set the final position."""
+        if self.dragging_tray:
+            self.dragging_tray = False  # Disable dragging mode
+
+            z = max(0, min(int(event.y), 540))
+
+            # Set the target position based on the final dragged position
+            self.targeted_tray_position = z
+
+            # Convert to actual coordinates
+            mapped_x, mapped_y, mapped_z = self.grid_to_actual(0, 0, z)
+            self.target_z =max(10,int(mapped_z))
+
+            # Redraw the drawing area
+            self.tray_drawing_area.queue_draw()
+
+            self.confirm_move(widget)
