@@ -5,6 +5,8 @@ import yaml
 from io import StringIO
 
 
+import subprocess
+import threading
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk, Pango, GdkPixbuf
@@ -12,8 +14,6 @@ from datetime import datetime
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
 from ks_includes.widgets.flowboxchild_extended import PrintListItem
-
-
 
 
 def format_label(widget):
@@ -175,12 +175,18 @@ class Panel(ScreenPanel):
             row.attach(rename, 2, 1, 1, 1)
             row.attach(delete, 3, 1, 1, 1)
             if 'filename' in item:
-                icon.connect("clicked", self.confirm_compatible_print, path)
+                if path.startswith('flash_drive'):
+                    icon.connect("clicked", self.confirm_move_gcode, path)
+                    action = self._gtk.Button("usb download", style="color3")
+                    action.connect("clicked", self.confirm_move_gcode, path)
+                else:
+                    icon.connect("clicked", self.confirm_compatible_print, path)
+                    action = self._gtk.Button("print", style="color3")
+                    action.connect("clicked", self.confirm_compatible_print, path)
+
                 image_args = (path, icon, self.thumbsize, False, "file")
                 delete.connect("clicked", self.confirm_delete_file, f"gcodes/{path}")
                 rename.connect("clicked", self.show_rename, f"gcodes/{path}")
-                action = self._gtk.Button("print", style="color3")
-                action.connect("clicked", self.confirm_compatible_print, path)
                 action.set_hexpand(False)
                 action.set_vexpand(False)
                 action.set_halign(Gtk.Align.END)
@@ -202,8 +208,12 @@ class Panel(ScreenPanel):
         else:  # Thumbnail view
             icon = self._gtk.Button(label=basename)
             if 'filename' in item:
-                icon.connect("clicked", self.confirm_compatible_print, path)
+                if path.startswith('flash_drive'):
+                    icon.connect("clicked", self.confirm_move_gcode, path)
+                else:
+                    icon.connect("clicked", self.confirm_compatible_print, path)
                 image_args = (path, icon, self.thumbsize, False, "file")
+
             elif 'dirname' in item:
                 icon.connect("clicked", self.change_dir, path)
                 image_args = (None, icon, self.thumbsize, False, "folder")
@@ -357,12 +367,34 @@ class Panel(ScreenPanel):
         warningGenericText = 'Running this file may damage your machine'
         self.file_metadata = self._files.get_file_info(filename)
         # if printer config doesnt exist, then skip all config checks
-        if (('enable_config_verifier' not in self.file_metadata) or self.file_metadata['enable_config_verifier']):
+        if isinstance(self.file_metadata, dict) and self.file_metadata.get('enable_config_verifier', True):
             #Load the yml config from gcode
             label_text = ""
             label_class = ""
             # if the slicer is not PantheonSlicer then show a warning
-            if (self.file_metadata['slicer'] == 'PantheonSlicer'):
+            slicer = self.file_metadata.get('slicer')
+            if slicer is None:
+                buttons = [
+                    {"name": _("Print"), "response": Gtk.ResponseType.OK},
+                    {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+                ]
+
+                label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+                label.set_markup(f"<b>{filename}</b>\n")
+
+                box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                box.add(label)
+
+                height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+                pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+                if pixbuf is not None:
+                    image = Gtk.Image.new_from_pixbuf(pixbuf)
+                    box.add(image)
+
+                dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_print_response, filename)
+                dialog.get_style_context().add_class('confirmPrintDialog')
+                return
+            if slicer == 'PantheonSlicer':
                 buttons = []
                 if 'config_yml' not in self.file_metadata or not self.file_metadata['config_yml']:
                     # Scenario 1: config_yml doesn't exist for pantheonslicer
@@ -563,7 +595,7 @@ class Panel(ScreenPanel):
                 label_text.set_use_markup(True)
                 label_text.set_xalign(0.0)
 
-                warning_label = Gtk.Label(label=f"Third-party slicer detected: {self.file_metadata['slicer']} ")
+                warning_label = Gtk.Label(label=f"Third-party slicer detected: {slicer} ")
                 warning_label.set_use_markup(True)
                 warning_label.set_xalign(0.0)
                 
@@ -819,4 +851,44 @@ class Panel(ScreenPanel):
             self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
             self.is_primed = True
 
+    def confirm_move_gcode(self, widget, filename):
+        self.file_metadata = self._files.get_file_info(filename)
 
+        buttons = [
+            {"name": _("Copy to Printer"), "response": Gtk.ResponseType.OK},
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
+        ]
+
+        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        label.set_markup(f"<b>{filename}</b>\n")
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.add(label)
+
+        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
+        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
+        if pixbuf is not None:
+            image = Gtk.Image.new_from_pixbuf(pixbuf)
+            box.add(image)
+
+        dialog = self._gtk.Dialog(_("Copy to Printer") + f' {filename}', buttons, box, self.confirm_move_gcode_response, self.cur_directory, filename, widget)
+        dialog.get_style_context().add_class('confirm_move_gcode')
+
+
+    def confirm_move_gcode_response(self, dialog, response_id, cur_directory, filename, widget):
+        self._gtk.remove_dialog(dialog)
+        if response_id == Gtk.ResponseType.OK:
+            self.move_to_gcodes(cur_directory, filename, widget)
+
+    def move_to_gcodes(self, cur_directory, filename, widget):
+        basename = os.path.basename(filename)
+        source = os.path.join(cur_directory, basename)
+        destination = os.path.join('gcodes', basename)
+        self._screen.show_popup_message(f'Copying {basename} to {source}', level=1)
+
+        params = {"source": source, "dest": destination}
+        self._screen._send_action(
+            widget,
+            "server.files.move",
+            params
+        )
