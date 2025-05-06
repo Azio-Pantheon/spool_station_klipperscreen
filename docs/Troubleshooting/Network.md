@@ -3,37 +3,10 @@
 !!! tip "First start"
     The initial scan may take a couple of minutes, first be patient before assuming it's an issue
 
-Check if network-manager is installed:
-
-```bash
-dpkg -s network-manager
-```
-
-if the response is the following:
-
-```sh
-dpkg-query: the package 'network-manager' is not installed
-```
-
-go to [wpa_supplicant](wpa_supplicant.md)
-
-if the response is the following:
-
-```sh
-Package: network-manager
-Status: install ok installed
-```
-
-this line may appear in KlipperScreen.log:
-!!! abstract "Log"
-    ```sh
-    [wifi_nm.py:rescan()] [...] NetworkManager.wifi.scan request failed: not authorized
-    ```
-
 if version of KlipperScreen installed was previous than v0.3.9, then re-run the installer and reboot
 
 
-??? Alternative workaround for network-manager
+??? "Alternative workaround for network-manager not having permissions"
 
     in order to fix this polkit needs to be configured or disabled:
 
