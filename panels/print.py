@@ -878,9 +878,9 @@ class Panel(ScreenPanel):
     def confirm_move_gcode_response(self, dialog, response_id, cur_directory, filename, widget):
         self._gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
-            self.move_to_gcodes(cur_directory, filename, widget)
+            self.copy_to_gcodes(cur_directory, filename, widget)
 
-    def move_to_gcodes(self, cur_directory, filename, widget):
+    def copy_to_gcodes(self, cur_directory, filename, widget):
         basename = os.path.basename(filename)
         source = os.path.join(cur_directory, basename)
         destination = os.path.join('gcodes', basename)
@@ -889,6 +889,6 @@ class Panel(ScreenPanel):
         params = {"source": source, "dest": destination}
         self._screen._send_action(
             widget,
-            "server.files.move",
+            "server.files.copy",
             params
         )
