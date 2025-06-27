@@ -707,8 +707,9 @@ class KlipperScreen(Gtk.Window):
         self.init_moonraker_components()
         self.init_klipper()
 
-    def websocket_disconnected(self):
+    def websocket_disconnected(self, *args):
         logging.debug("### websocket_disconnected")
+        msg = _("Websocket to Moonraker was closed")
         self.printer_initializing(msg, remove=True)
         self.printer.state = "disconnected"
         self.connecting = True
