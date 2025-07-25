@@ -56,13 +56,17 @@ class Panel(MenuPanel):
             self.overlay.add_overlay(self.prime_button)
 
             # Set button position relative to the overlay
-            self.prime_button.set_halign(Gtk.Align.CENTER)  # Horizontal alignment (center, start, end)
-            self.prime_button.set_valign(Gtk.Align.END)   # Vertical alignment (start, center, end)
+            self.prime_button.set_halign(Gtk.Align.CENTER)
+            self.prime_button.set_valign(Gtk.Align.END)
 
             # Attach the overlay to the grid instead of the scroll directly
             self.main_menu.attach(self.overlay, 1, 0, 1, 1)
 
-            self.prime_button.connect("realize", lambda widget: widget.hide())
+            # Set initial visibility instead of using realize callback
+            if getattr(self._screen.shared_printer_config, 'enable_prime', 0) == 1 and not self.is_primed:
+                self.prime_button.show()
+            else:
+                self.prime_button.hide()
 
         self.content.add(self.main_menu)
 
