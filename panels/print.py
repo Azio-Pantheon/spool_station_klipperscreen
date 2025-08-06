@@ -143,8 +143,16 @@ class Panel(ScreenPanel):
                     os.path.splitext(item['filename'])[1] not in {'.gcode', '.gco', '.g'}):
                 return
             name = item['filename']
-            path = f"{self.cur_directory}/{name}"
-            path = path.replace('gcodes/', '')
+            # Fixed path handling - more robust than simple replace
+            if self.cur_directory == 'gcodes':
+                path = name
+            else:
+                # Remove 'gcodes/' prefix from current directory if present
+                if self.cur_directory.startswith('gcodes/'):
+                    relative_dir = self.cur_directory[7:]  # Remove 'gcodes/' prefix
+                    path = f"{relative_dir}/{name}"
+                else:
+                    path = f"{self.cur_directory}/{name}"
         else:
             logging.error(f"Unknown item {item}")
             return
