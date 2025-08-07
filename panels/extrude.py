@@ -334,7 +334,11 @@ class Panel(ScreenPanel):
             if filament == "Custom":
                 button.connect("clicked", self.open_custom_filament_dialog, dialog, run_load_macro)
             else:
-                button.connect("clicked", self.open_weight_entry_dialog, filament, dialog, run_load_macro)
+                # Check if spoolman is enabled to decide workflow
+                if self._printer.spoolman:
+                    button.connect("clicked", self.open_weight_entry_dialog, filament, dialog, run_load_macro)
+                else:
+                    button.connect("clicked", self.set_filament_type_original, filament, dialog, run_load_macro)
             grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
 
         # Add the grid to the dialog content area and show all
@@ -552,6 +556,41 @@ class Panel(ScreenPanel):
                 self._screen.show_popup_message(f"Spoolman error setting active spool: {result.get('error', 'Unknown error')}", level=3)
         except Exception as e:
             self._screen.show_popup_message(f"Spoolman error setting active spool: {str(e)}", level=3)
+
+    def set_filament_type_original(self, widget, filament_type, dialog, run_load_macro=False):
+        # Close the dialog when a filament type is selected
+        dialog.destroy()
+
+        # Determine moonraker filament name (PA-GF variants both become PA-GF)
+        if filament_type.startswith("PA-GF"):
+            moonraker_filament = "PA-GF"
+        else:
+            moonraker_filament = filament_type
+
+        # Define a callback function to handle the response
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(f"Failed to set filament type: {response['error']['message']}", level=3)
+            else:
+                self.shared_printer_config.filament = moonraker_filament
+                self._screen.show_popup_message(f"Filament type set to {moonraker_filament}", level=1)
+                self.update_button_labels()
+
+        # Send Moonraker requests to set the filament type, passing the callback
+        self._screen._ws.send_method(
+            "server.database.post_item", 
+            {
+                "namespace": "HS3",
+                "key": "filament_type",
+                "value": moonraker_filament
+            },
+            handle_response  # Pass the callback here
+        )
+
+        # Run load macro if requested
+        if run_load_macro:
+            self._screen._send_action(None, "printer.gcode.script",
+                                      {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
 
     def set_filament_type(self, widget, filament_type, dialog):
         # This method is kept for backward compatibility but now redirects to weight entry
