@@ -867,6 +867,8 @@ class Panel(ScreenPanel):
         # Show the button with its new content
         self.buttons['set_nozzle'].show_all()
 
+        self.refresh_title()
+
     def load_filament_nozzle(self):
 
         # Define a callback function to handle the response
@@ -893,6 +895,34 @@ class Panel(ScreenPanel):
             },
             handle_response  # Pass the callback here
         )
+
+    def refresh_title(self):
+        try:
+            import os
+            
+            # Build the title string
+            hostname = os.uname().nodename
+            base_title = f"{hostname}.local"
+            
+            # Add filament and nozzle info if available
+            if (hasattr(self.shared_printer_config, 'filament') and 
+                self.shared_printer_config.filament):
+                base_title += f" | {self.shared_printer_config.filament}"
+                
+            if (hasattr(self.shared_printer_config, 'nozzle') and 
+                self.shared_printer_config.nozzle):
+                base_title += f" {self.shared_printer_config.nozzle}mm"
+            
+            base_title += " | Extrude"
+            
+            # Direct update of the title label
+            self._screen.base_panel.titlelbl.set_label(base_title)
+            logging.info(f"Title updated to: {base_title}")
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error updating title: {e}")
+            return False
 
 
 class ClickOutsideDialog(Gtk.Dialog):
