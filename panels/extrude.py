@@ -107,8 +107,9 @@ class Panel(ScreenPanel):
             self.labels["current_extruder"].connect("clicked", self.load_menu, 'extruders', _('Extruders'))
         if i < limit:
             xbox.add(self.buttons['temperature'])
-        if i < (limit - 1) and self._printer.spoolman:
-            xbox.add(self.buttons['spoolman'])
+
+        #if i < (limit - 1) and self._printer.spoolman:
+        #    xbox.add(self.buttons['spoolman'])
 
         xbox.add(self.buttons['set_filament'])
         xbox.add(self.buttons['set_nozzle'])
