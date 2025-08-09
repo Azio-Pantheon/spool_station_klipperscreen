@@ -1,5 +1,6 @@
 import logging
 import re
+import os
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -107,9 +108,8 @@ class Panel(ScreenPanel):
             self.labels["current_extruder"].connect("clicked", self.load_menu, 'extruders', _('Extruders'))
         if i < limit:
             xbox.add(self.buttons['temperature'])
-
-        #if i < (limit - 1) and self._printer.spoolman:
-        #    xbox.add(self.buttons['spoolman'])
+        if i < (limit - 1) and self._printer.spoolman:
+            xbox.add(self.buttons['spoolman'])
 
         xbox.add(self.buttons['set_filament'])
         xbox.add(self.buttons['set_nozzle'])
@@ -525,6 +525,7 @@ class Panel(ScreenPanel):
         # Get filament ID from mapping
         filament_data = self.spoolman_filament_mapping[filament_type]
         filament_id = filament_data["id"]
+        hostname = f"{os.uname().nodename}.local"
 
         # Create new spool
         try:
@@ -533,7 +534,8 @@ class Panel(ScreenPanel):
                 "path": "/v1/spool",
                 "body": {
                     "filament_id": filament_id,
-                    "initial_weight": weight
+                    "initial_weight": weight,
+                    "location": hostname
                 }
             })
             
@@ -868,8 +870,6 @@ class Panel(ScreenPanel):
         # Show the button with its new content
         self.buttons['set_nozzle'].show_all()
 
-        self.refresh_title()
-
     def load_filament_nozzle(self):
 
         # Define a callback function to handle the response
@@ -896,34 +896,6 @@ class Panel(ScreenPanel):
             },
             handle_response  # Pass the callback here
         )
-
-    def refresh_title(self):
-        try:
-            import os
-            
-            # Build the title string
-            hostname = os.uname().nodename
-            base_title = f"{hostname}.local"
-            
-            # Add filament and nozzle info if available
-            if (hasattr(self.shared_printer_config, 'filament') and 
-                self.shared_printer_config.filament):
-                base_title += f" | {self.shared_printer_config.filament}"
-                
-            if (hasattr(self.shared_printer_config, 'nozzle') and 
-                self.shared_printer_config.nozzle):
-                base_title += f" {self.shared_printer_config.nozzle}mm"
-            
-            base_title += " | Extrude"
-            
-            # Direct update of the title label
-            self._screen.base_panel.titlelbl.set_label(base_title)
-            logging.info(f"Title updated to: {base_title}")
-            return True
-            
-        except Exception as e:
-            logging.error(f"Error updating title: {e}")
-            return False
 
 
 class ClickOutsideDialog(Gtk.Dialog):
