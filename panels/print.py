@@ -2,6 +2,7 @@ import logging
 import os
 import gi
 import yaml
+import re
 from io import StringIO
 
 
@@ -334,6 +335,79 @@ class Panel(ScreenPanel):
             return a.get_is_dir() - b.get_is_dir()
         return b.get_date() - a.get_date() if reverse else a.get_date() - b.get_date()
 
+    def parse_weight_from_filename(self, filename):
+        """
+        Parse weight from filename with pattern: *_XXXXg.gcode
+        Returns weight as float or None if not found/invalid
+        """
+        # Pattern matches: underscore + number (int or float) + "g.gcode" at end of string
+        pattern = r'_(\d+(?:\.\d+)?)g\.gcode$'
+        match = re.search(pattern, filename)
+        
+        if match:
+            try:
+                return float(match.group(1))
+            except ValueError:
+                return None
+        return None
+
+    def get_spoolman_remaining_weight(self):
+        """
+        Get remaining weight from active spool in spoolman
+        Returns remaining weight as float or None if unavailable
+        """
+        try:
+            # Get active spool ID
+            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
+            if not result or "result" not in result or not result["result"]["spool_id"]:
+                return None
+                
+            active_spool_id = result["result"]["spool_id"]
+            
+            # Get spool details
+            spool_result = self._screen.apiclient.post_request("server/spoolman/proxy", json={
+                "request_method": "GET",
+                "path": f"/v1/spool/{active_spool_id}"
+            })
+            
+            if spool_result and "result" in spool_result and "remaining_weight" in spool_result["result"]:
+                return float(spool_result["result"]["remaining_weight"])
+                
+        except Exception as e:
+            logging.error(f"Error getting spoolman remaining weight: {e}")
+            # Show popup warning for spoolman API errors
+            self._screen.show_popup_message(f"Spoolman error: {str(e)}", level=3)
+            
+        return None
+
+    def check_filament_weight(self, filename):
+        """
+        Check if filament weight is sufficient for the print
+        Returns tuple: (weight_status, required_weight, remaining_weight)
+        weight_status: 'sufficient', 'caution', 'warning', or 'skip'
+        """
+        # Only check if spoolman is enabled
+        if not self._printer.spoolman:
+            return 'skip', None, None
+            
+        # Parse weight from filename
+        required_weight = self.parse_weight_from_filename(filename)
+        if required_weight is None:
+            return 'skip', None, None
+            
+        # Get remaining weight from spoolman
+        remaining_weight = self.get_spoolman_remaining_weight()
+        if remaining_weight is None:
+            return 'skip', None, None
+            
+        # Check weight levels
+        if remaining_weight < required_weight:
+            return 'warning', required_weight, remaining_weight
+        elif remaining_weight < required_weight * 1.1:  # 10% buffer
+            return 'caution', required_weight, remaining_weight
+        else:
+            return 'sufficient', required_weight, remaining_weight
+
     def confirm_print(self, widget, filename):
 
         buttons = [
@@ -374,6 +448,10 @@ class Panel(ScreenPanel):
         cautionGenericText = 'Print Quality may be degraded'
         warningGenericText = 'Running this file may damage your machine'
         self.file_metadata = self._files.get_file_info(filename)
+        
+        # Check filament weight
+        weight_status, required_weight, remaining_weight = self.check_filament_weight(filename)
+        
         # if printer config doesnt exist, then skip all config checks
         if isinstance(self.file_metadata, dict) and self.file_metadata.get('enable_config_verifier', True):
             #Load the yml config from gcode
@@ -391,6 +469,32 @@ class Panel(ScreenPanel):
                 label.set_markup(f"<b>{filename}</b>\n")
 
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                
+                # Add weight warning banner if needed
+                if weight_status in ['warning', 'caution']:
+                    weight_banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                    weight_banner_box.set_margin_bottom(10)
+                    
+                    # Main banner
+                    weight_main_label = Gtk.Label()
+                    weight_main_label.set_markup('<b><span size="20480">Warning: Filament is Low</span></b>')
+                    weight_main_label.get_style_context().add_class('compatibilityMessage-warning')
+                    weight_main_label.set_use_markup(True)
+                    weight_main_label.set_xalign(0.0)
+                    
+                    # Detail text
+                    weight_detail_label = Gtk.Label()
+                    if weight_status == 'warning':
+                        weight_detail_label.set_markup(f'Warning! Filament required ({required_weight}g) is higher than the remaining weight ({remaining_weight:.1f}g)')
+                    else:  # caution
+                        weight_detail_label.set_markup(f'Caution, Filament required ({required_weight}g) is close to the remaining weight ({remaining_weight:.1f}g), filament may runout midprint')
+                    weight_detail_label.set_use_markup(True)
+                    weight_detail_label.set_xalign(0.0)
+                    
+                    weight_banner_box.add(weight_main_label)
+                    weight_banner_box.add(weight_detail_label)
+                    box.add(weight_banner_box)
+
                 box.add(label)
 
                 height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75
@@ -422,9 +526,37 @@ class Panel(ScreenPanel):
 
                     grid = Gtk.Grid()
                     grid.set_column_homogeneous(True)
+                    
+                    # Add weight warning banner at the top
+                    current_row = 0
+                    if weight_status in ['warning', 'caution']:
+                        weight_banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                        
+                        # Main banner
+                        weight_main_label = Gtk.Label()
+                        weight_main_label.set_markup('<b><span size="20480">Warning: Filament is Low</span></b>')
+                        weight_main_label.get_style_context().add_class('compatibilityMessage-warning')
+                        weight_main_label.set_use_markup(True)
+                        weight_main_label.set_xalign(0.0)
+                        
+                        # Detail text
+                        weight_detail_label = Gtk.Label()
+                        if weight_status == 'warning':
+                            weight_detail_label.set_markup(f'Warning! Filament required ({required_weight}g) is higher than the remaining weight ({remaining_weight:.1f}g)')
+                        else:  # caution
+                            weight_detail_label.set_markup(f'Caution, Filament required ({required_weight}g) is close to the remaining weight ({remaining_weight:.1f}g), filament may runout midprint')
+                        weight_detail_label.set_use_markup(True)
+                        weight_detail_label.set_xalign(0.0)
+                        
+                        weight_banner_box.add(weight_main_label)
+                        weight_banner_box.add(weight_detail_label)
+                        weight_banner_box.set_margin_bottom(10)
+                        grid.attach(weight_banner_box, 0, current_row, 1, 1)
+                        current_row += 1
+                    
                     label_text.set_margin_bottom(10)
-                    grid.attach(label_text, 0, 0, 1, 1)
-                    grid.attach(caution_label, 0, 1, 1, 1)
+                    grid.attach(label_text, 0, current_row, 1, 1)
+                    grid.attach(caution_label, 0, current_row + 1, 1, 1)
 
                     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                     box.add(grid)
@@ -458,9 +590,37 @@ class Panel(ScreenPanel):
 
                         grid = Gtk.Grid()
                         grid.set_column_homogeneous(True)
+                        
+                        # Add weight warning banner at the top
+                        current_row = 0
+                        if weight_status in ['warning', 'caution']:
+                            weight_banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                            
+                            # Main banner
+                            weight_main_label = Gtk.Label()
+                            weight_main_label.set_markup('<b><span size="20480">Warning: Filament is Low</span></b>')
+                            weight_main_label.get_style_context().add_class('compatibilityMessage-warning')
+                            weight_main_label.set_use_markup(True)
+                            weight_main_label.set_xalign(0.0)
+                            
+                            # Detail text
+                            weight_detail_label = Gtk.Label()
+                            if weight_status == 'warning':
+                                weight_detail_label.set_markup(f'Warning! Filament required ({required_weight}g) is higher than the remaining weight ({remaining_weight:.1f}g)')
+                            else:  # caution
+                                weight_detail_label.set_markup(f'Caution, Filament required ({required_weight}g) is close to the remaining weight ({remaining_weight:.1f}g), filament may runout midprint')
+                            weight_detail_label.set_use_markup(True)
+                            weight_detail_label.set_xalign(0.0)
+                            
+                            weight_banner_box.add(weight_main_label)
+                            weight_banner_box.add(weight_detail_label)
+                            weight_banner_box.set_margin_bottom(10)
+                            grid.attach(weight_banner_box, 0, current_row, 1, 1)
+                            current_row += 1
+                        
                         label_text.set_margin_bottom(10)
-                        grid.attach(label_text, 0, 0, 1, 1)
-                        grid.attach(warning_label, 0, 1, 1, 1)
+                        grid.attach(label_text, 0, current_row, 1, 1)
+                        grid.attach(warning_label, 0, current_row + 1, 1, 1)
 
                         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                         box.add(grid)
@@ -502,7 +662,7 @@ class Panel(ScreenPanel):
                         cautionStrings = []
                         dangerStrings = []
 
-                        label_text = f"Differences detected in {filename}"
+                        label_text = filename
                         label_class = ''
 
                         for entry in config_verifier:
@@ -522,6 +682,39 @@ class Panel(ScreenPanel):
                         # Create a grid to display differences side by side
                         grid = Gtk.Grid()
                         grid.set_column_homogeneous(True)
+                        
+                        # Row 0: Filename
+                        label = Gtk.Label(label=filename)
+                        if label_class:
+                            label.get_style_context().add_class(label_class)
+                        grid.attach(label, 0, 0, 2, 1)
+                        
+                        # Row 1: Add weight warning banner (if needed)
+                        current_row = 1
+                        if weight_status in ['warning', 'caution']:
+                            weight_banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                            
+                            # Main banner
+                            weight_main_label = Gtk.Label()
+                            weight_main_label.set_markup('<b><span size="20480">Warning: Filament is Low</span></b>')
+                            weight_main_label.get_style_context().add_class('compatibilityMessage-warning')
+                            weight_main_label.set_use_markup(True)
+                            weight_main_label.set_xalign(0.0)
+                            
+                            # Detail text
+                            weight_detail_label = Gtk.Label()
+                            if weight_status == 'warning':
+                                weight_detail_label.set_markup(f'Warning! Filament required ({required_weight}g) is higher than the remaining weight ({remaining_weight:.1f}g)')
+                            else:  # caution
+                                weight_detail_label.set_markup(f'Caution, Filament required ({required_weight}g) is close to the remaining weight ({remaining_weight:.1f}g), filament may runout midprint')
+                            weight_detail_label.set_use_markup(True)
+                            weight_detail_label.set_xalign(0.0)
+                            
+                            weight_banner_box.add(weight_main_label)
+                            weight_banner_box.add(weight_detail_label)
+                            weight_banner_box.set_margin_bottom(10)
+                            grid.attach(weight_banner_box, 0, current_row, 2, 1)
+                            current_row += 1
 
                         # Create TextView widgets to display the YAML content with appropriate classes
                         for i in range(len(warningStrings)):
@@ -531,7 +724,7 @@ class Panel(ScreenPanel):
                                 warning_label.set_use_markup(True)
                                 warning_label.set_xalign(0.0)
                                 warning_label.set_margin_bottom(10)
-                                grid.attach(warning_label, 0, i + 1, 2, 1)
+                                grid.attach(warning_label, 0, current_row + i + 1, 2, 1)
                             # Create TextView for Gcode message
                             warning_textview = Gtk.TextView()
                             warning_textview.set_editable(False)
@@ -539,7 +732,7 @@ class Panel(ScreenPanel):
                             warning_buffer.set_text(warningStrings[i])
                             warning_textview.set_wrap_mode(Gtk.WrapMode.WORD)
                             # Add TextView widgets to the grid
-                            grid.attach(warning_textview, 0, len(warningStrings) + i + 2, 2, 1)
+                            grid.attach(warning_textview, 0, current_row + len(warningStrings) + i + 2, 2, 1)
 
                         # Create TextView widgets to display the YAML content with appropriate classes
                         for i in range(len(cautionStrings)):
@@ -549,7 +742,7 @@ class Panel(ScreenPanel):
                                 caution_label.set_use_markup(True)
                                 caution_label.set_xalign(0.0)
                                 caution_label.set_margin_bottom(10)
-                                grid.attach(caution_label, 0, len(warningStrings) + i + 6, 2, 1)
+                                grid.attach(caution_label, 0, current_row + len(warningStrings) + i + 6, 2, 1)
                             # Create TextView for Gcode message
                             caution_textview = Gtk.TextView()
                             caution_textview.set_editable(False)
@@ -559,16 +752,15 @@ class Panel(ScreenPanel):
 
 
                             # Add TextView widgets to the grid
-                            grid.attach(caution_textview, 0, len(warningStrings) + i + 7, 2, 1)
+                            grid.attach(caution_textview, 0, current_row + len(warningStrings) + i + 7, 2, 1)
 
                         # Create TextView widgets to display the YAML content with appropriate classes
                         # DangerStrings is not implemented
 
-                    # Create label and add the appropriate style class
-                    label = Gtk.Label(label=label_text)
+                    # Create label for simple case (no differences found)
+                    if config_verifier == []:
+                        simple_label = Gtk.Label(label=f"{filename}\n")
                 
-                if label_class:
-                    label.get_style_context().add_class(label_class)
                 # Create a ScrolledWindow and set maximum height
                 scrolled_window = Gtk.ScrolledWindow()
                 scrolled_window.set_hexpand(True)
@@ -577,10 +769,37 @@ class Panel(ScreenPanel):
                 scrolled_window.set_max_content_height(300)  # Set the maximum height as needed
 
                 if 'grid' in locals():
-                    grid.attach(label, 0, 0, 2, 1)
                     scrolled_window.add(grid)
                 else:
-                    scrolled_window .add(label)
+                    # Handle simple case with no grid (no differences found)
+                    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+                    box.add(simple_label)
+                    # Add weight warning banner after filename
+                    if weight_status in ['warning', 'caution']:
+                        weight_banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                        weight_banner_box.set_margin_bottom(10)
+                        
+                        # Main banner
+                        weight_main_label = Gtk.Label()
+                        weight_main_label.set_markup('<b><span size="20480">Warning: Filament is Low</span></b>')
+                        weight_main_label.get_style_context().add_class('compatibilityMessage-warning')
+                        weight_main_label.set_use_markup(True)
+                        weight_main_label.set_xalign(0.0)
+                        
+                        # Detail text
+                        weight_detail_label = Gtk.Label()
+                        if weight_status == 'warning':
+                            weight_detail_label.set_markup(f'Warning! Filament required ({required_weight}g) is higher than the remaining weight ({remaining_weight:.1f}g)')
+                        else:  # caution
+                            weight_detail_label.set_markup(f'Caution, Filament required ({required_weight}g) is close to the remaining weight ({remaining_weight:.1f}g), filament may runout midprint')
+                        weight_detail_label.set_use_markup(True)
+                        weight_detail_label.set_xalign(0.0)
+                        
+                        weight_banner_box.add(weight_main_label)
+                        weight_banner_box.add(weight_detail_label)
+                        box.add(weight_banner_box)
+                    scrolled_window.add(box)
+                    
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                 box.add(scrolled_window)
                 #box.get_style_context().add_class('confirmPrintDialog')
@@ -614,9 +833,37 @@ class Panel(ScreenPanel):
 
                 grid = Gtk.Grid()
                 grid.set_column_homogeneous(True)
+                
+                # Add weight warning banner at the top
+                current_row = 0
+                if weight_status in ['warning', 'caution']:
+                    weight_banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                    
+                    # Main banner
+                    weight_main_label = Gtk.Label()
+                    weight_main_label.set_markup('<b><span size="20480">Warning: Filament is Low</span></b>')
+                    weight_main_label.get_style_context().add_class('compatibilityMessage-warning')
+                    weight_main_label.set_use_markup(True)
+                    weight_main_label.set_xalign(0.0)
+                    
+                    # Detail text
+                    weight_detail_label = Gtk.Label()
+                    if weight_status == 'warning':
+                        weight_detail_label.set_markup(f'Warning! Filament required ({required_weight}g) is higher than the remaining weight ({remaining_weight:.1f}g)')
+                    else:  # caution
+                        weight_detail_label.set_markup(f'Caution, Filament required ({required_weight}g) is close to the remaining weight ({required_weight:.1f}g), filament may runout midprint')
+                    weight_detail_label.set_use_markup(True)
+                    weight_detail_label.set_xalign(0.0)
+                    
+                    weight_banner_box.add(weight_main_label)
+                    weight_banner_box.add(weight_detail_label)
+                    weight_banner_box.set_margin_bottom(10)
+                    grid.attach(weight_banner_box, 0, current_row, 1, 1)
+                    current_row += 1
+                
                 label_text.set_margin_bottom(10)
-                grid.attach(label_text, 0, 0, 1, 1)
-                grid.attach(warning_label, 0, 1, 1, 1)
+                grid.attach(label_text, 0, current_row, 1, 1)
+                grid.attach(warning_label, 0, current_row + 1, 1, 1)
 
                 box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
                 box.add(grid)
@@ -640,6 +887,32 @@ class Panel(ScreenPanel):
             label.set_markup(f"<b>{filename}</b>\n")
 
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            
+            # Add weight warning banner if needed
+            if weight_status in ['warning', 'caution']:
+                weight_banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
+                weight_banner_box.set_margin_bottom(10)
+                
+                # Main banner
+                weight_main_label = Gtk.Label()
+                weight_main_label.set_markup('<b><span size="20480">Warning: Filament is Low</span></b>')
+                weight_main_label.get_style_context().add_class('compatibilityMessage-warning')
+                weight_main_label.set_use_markup(True)
+                weight_main_label.set_xalign(0.0)
+                
+                # Detail text
+                weight_detail_label = Gtk.Label()
+                if weight_status == 'warning':
+                    weight_detail_label.set_markup(f'Warning! Filament required ({required_weight}g) is higher than the remaining weight ({remaining_weight:.1f}g)')
+                else:  # caution
+                    weight_detail_label.set_markup(f'Caution, Filament required ({required_weight}g) is close to the remaining weight ({remaining_weight:.1f}g), filament may runout midprint')
+                weight_detail_label.set_use_markup(True)
+                weight_detail_label.set_xalign(0.0)
+                
+                weight_banner_box.add(weight_main_label)
+                weight_banner_box.add(weight_detail_label)
+                box.add(weight_banner_box)
+            
             box.add(label)
 
             height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .75

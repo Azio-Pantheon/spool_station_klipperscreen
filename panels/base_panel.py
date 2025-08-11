@@ -300,6 +300,62 @@ class BasePanel(ScreenPanel):
 
     def set_title(self, title):
         self.titlebar.get_style_context().remove_class("message_popup_error")
+        
+        # Get filament and nozzle info from Moonraker database
+        def handle_config_response(response, method, params, *args):
+            try:
+                result = response.get("result", {})
+                value = result.get("value", {})
+                filament = value.get("filament_type", "")
+                nozzle = value.get("nozzle_size", "")
+                
+                # Build the title with filament and nozzle info
+                base_title = f"{os.uname().nodename}.local"
+                
+                # Add filament and nozzle if available
+                if filament or nozzle:
+                    config_info = []
+                    if filament:
+                        config_info.append(filament)
+                    if nozzle:
+                        config_info.append(f"{nozzle}mm")
+                    
+                    if config_info:
+                        base_title += f" | {' '.join(config_info)}"
+                
+                # Add the panel title if provided
+                if title:
+                    try:
+                        env = Environment(extensions=["jinja2.ext.i18n"], autoescape=True)
+                        env.install_gettext_translations(self._config.get_lang())
+                        j2_temp = env.from_string(title)
+                        processed_title = j2_temp.render()
+                        base_title += f" | {processed_title}"
+                    except Exception as e:
+                        logging.debug(f"Error parsing jinja for title: {title}\n{e}")
+                        base_title += f" | {title}"
+                
+                self.titlelbl.set_label(base_title)
+                
+            except Exception as e:
+                logging.debug(f"Error processing config response: {e}")
+                # Fallback to original behavior
+                self._set_title_fallback(title)
+        
+        # Request the config data from Moonraker
+        try:
+            self._screen._ws.send_method(
+                "server.database.get_item",
+                {"namespace": "HS3"},
+                handle_config_response
+            )
+        except Exception as e:
+            logging.debug(f"Error requesting config from Moonraker: {e}")
+            # Fallback to original behavior
+            self._set_title_fallback(title)
+
+    def _set_title_fallback(self, title):
+        """Fallback method that uses the original title setting logic"""
         if not title:
             self.titlelbl.set_label(f"{os.uname().nodename}.local")
             return

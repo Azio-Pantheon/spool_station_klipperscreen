@@ -1,5 +1,6 @@
 import logging
 import re
+import os
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -20,6 +21,15 @@ class Panel(ScreenPanel):
 
         self.shared_printer_config = shared_printer_config
         self.keyboard_visible = False
+
+        # Spoolman filament mapping
+        self.spoolman_filament_mapping = {
+            "PETG-CF": {"id": 1, "default_weight": 3000},
+            "PA-CF": {"id": 2, "default_weight": 3000},
+            "TPU": {"id": 3, "default_weight": 2500},
+            "PA-GF (Natural)": {"id": 4, "default_weight": 3000},
+            "PA-GF (Dark Grey)": {"id": 5, "default_weight": 3000}
+        }
 
         self.speeds = ['1', '2', '5', '25']
         self.distances = ['5', '10', '15', '25']
@@ -98,12 +108,9 @@ class Panel(ScreenPanel):
             self.labels["current_extruder"].connect("clicked", self.load_menu, 'extruders', _('Extruders'))
         if i < limit:
             xbox.add(self.buttons['temperature'])
-        if i < (limit - 1) and self._printer.spoolman:
-            xbox.add(self.buttons['spoolman'])
 
         xbox.add(self.buttons['set_filament'])
         xbox.add(self.buttons['set_nozzle'])
-
 
         distgrid = Gtk.Grid()
         for j, i in enumerate(self.distances):
@@ -277,10 +284,8 @@ class Panel(ScreenPanel):
             if not self.load_filament:
                 self._screen.show_popup_message("Macro LOAD_FILAMENT not found")
             else:
-                self._screen._send_action(widget, "printer.gcode.script",
-                                          {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
-            self.open_filament_selection(widget)
-
+                # First open filament selection, then run load macro
+                self.open_filament_selection(widget, run_load_macro=True)
 
     def enable_disable_fs(self, switch, gparams, name, x):
         if switch.get_active():
@@ -296,15 +301,15 @@ class Panel(ScreenPanel):
             self.labels[x]['box'].get_style_context().remove_class("filament_sensor_empty")
             self.labels[x]['box'].get_style_context().remove_class("filament_sensor_detected")
 
-    def open_filament_selection(self, widget):
-        # List of filament types including a custom option
-        filament_types = ["PETG-CF", "PA-CF", "PA-GF", "TPU", "Custom"]
+    def open_filament_selection(self, widget, run_load_macro=False):
+        # List of filament types including a custom option - updated to 5 preset types
+        filament_types = ["PETG-CF", "PA-CF", "TPU", "PA-GF (Natural)", "PA-GF (Dark Grey)", "Custom"]
 
         # Create the dialog for selecting filament types
         dialog = ClickOutsideDialog(title="Select Filament Type",
                                     transient_for=widget.get_toplevel(),
                                     flags=Gtk.DialogFlags.MODAL)
-        dialog.set_default_size(600, 250)
+        dialog.set_default_size(600, 300)  # Increased height for 6 buttons
 
         current_x, current_y = dialog.get_position()
         dialog.move(current_x, current_y - 80)  
@@ -326,9 +331,13 @@ class Panel(ScreenPanel):
             button.get_style_context().add_class("color1")
             button.set_size_request(150, 200)
             if filament == "Custom":
-                button.connect("clicked", self.open_custom_filament_dialog, dialog)
+                button.connect("clicked", self.open_custom_filament_dialog, dialog, run_load_macro)
             else:
-                button.connect("clicked", self.set_filament_type, filament, dialog)
+                # Check if spoolman is enabled to decide workflow
+                if self._printer.spoolman:
+                    button.connect("clicked", self.open_weight_entry_dialog, filament, dialog, run_load_macro)
+                else:
+                    button.connect("clicked", self.set_filament_type_original, filament, dialog, run_load_macro)
             grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
 
         # Add the grid to the dialog content area and show all
@@ -336,19 +345,237 @@ class Panel(ScreenPanel):
         content_area.add(grid)
         dialog.show_all()
 
-    def set_filament_type(self, widget, filament_type, dialog):
+    def open_weight_entry_dialog(self, widget, filament_type, parent_dialog, run_load_macro=False):
+        # Get the position of the parent dialog
+        current_x, current_y = parent_dialog.get_position()
+        
+        # Close the parent dialog
+        parent_dialog.destroy()
+
+        # Get default weight for this filament type
+        default_weight = self.spoolman_filament_mapping[filament_type]["default_weight"]
+
+        # Get the toplevel window (parent window) for the dialog
+        parent_window = widget.get_toplevel()
+        if not isinstance(parent_window, Gtk.Window):
+            parent_window = None
+
+        # Create weight entry dialog
+        weight_dialog = ClickOutsideDialog(
+            title=f"Enter Weight for {filament_type}",
+            transient_for=parent_window,  # Pass the parent window here
+            flags=Gtk.DialogFlags.MODAL
+        )
+        weight_dialog.set_default_size(400, 400)
+        weight_dialog.move(current_x - 170, current_y - 70)
+
+        # Connect the destroy signal to remove the keyboard when the dialog is closed
+        weight_dialog.connect("destroy", self._screen.remove_custom_keyboard)
+
+        # Create a vertical box layout
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_margin_start(20)
+        vbox.set_margin_end(20)
+        vbox.set_margin_top(20)
+        vbox.set_margin_bottom(20)
+
+        # Add instruction label
+        instruction_label = Gtk.Label()
+        instruction_label.set_markup(f'<span font="12">Enter weight for {filament_type} (grams)</span>')
+        vbox.pack_start(instruction_label, False, False, 10)
+
+        # Create a text entry field for weight
+        entry = Gtk.Entry()
+        entry.set_text(str(default_weight))
+        entry.select_region(0, -1)  # Select all text
+
+        # Connect the entry to show the virtual keyboard when focused
+        entry.connect("focus-in-event", lambda w, e: self._screen.show_custom_keyboard(entry))
+        entry.grab_focus()
+
+        vbox.pack_start(entry, True, True, 0)
+
+        # Add the keyboard below the entry field
+        keyboard = self._screen.show_custom_keyboard(entry)
+        if keyboard:
+            vbox.pack_start(keyboard, False, False, 10)
+
+        # Create a horizontal box for the confirm and cancel buttons
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        # Create the Confirm button
+        confirm_button = Gtk.Button(label="Confirm")
+        confirm_button.get_style_context().add_class("color1")
+        confirm_button.set_size_request(150, 50)
+        confirm_button.connect("clicked", self.confirm_weight_entry, entry, weight_dialog, filament_type, run_load_macro)
+        hbox.pack_start(confirm_button, True, True, 0)
+
+        # Create the Cancel button
+        cancel_button = Gtk.Button(label="Cancel")
+        cancel_button.get_style_context().add_class("color1")
+        cancel_button.set_size_request(150, 50)
+        cancel_button.connect("clicked", lambda w: weight_dialog.destroy())
+        hbox.pack_start(cancel_button, True, True, 0)
+
+        # Pack the buttons into the vertical box
+        vbox.pack_start(hbox, False, False, 0)
+
+        # Add the vertical box to the dialog content area
+        content_area = weight_dialog.get_content_area()
+        content_area.add(vbox)
+
+        # Show all elements in the dialog
+        weight_dialog.show_all()
+
+    def confirm_weight_entry(self, widget, entry, dialog, filament_type, run_load_macro=False):
+        # Get the weight from the entry
+        weight_text = entry.get_text().strip()
+        
+        # Validate weight
+        try:
+            weight = float(weight_text)
+            if weight <= 0:
+                raise ValueError("Weight must be positive")
+        except (ValueError, TypeError):
+            # Show popup warning and close dialog
+            self._screen.show_popup_message("Invalid weight entry. Please enter a positive number.", level=3)
+            dialog.destroy()
+            return
+
+        # Close the weight dialog
+        dialog.destroy()
+
+        # Process the filament selection with weight
+        self.process_filament_selection(filament_type, weight, run_load_macro)
+
+    def process_filament_selection(self, filament_type, weight, run_load_macro=False):
+        # Determine moonraker filament name (PA-GF variants both become PA-GF)
+        if filament_type.startswith("PA-GF"):
+            moonraker_filament = "PA-GF"
+        else:
+            moonraker_filament = filament_type
+
+        # Update Moonraker database first
+        def handle_moonraker_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(f"Failed to set filament type: {response['error']['message']}", level=3)
+            else:
+                self.shared_printer_config.filament = moonraker_filament
+                self._screen.show_popup_message(f"Filament type set to {moonraker_filament}", level=1)
+                self.update_button_labels()
+
+        # Send Moonraker request
+        self._screen._ws.send_method(
+            "server.database.post_item", 
+            {
+                "namespace": "HS3",
+                "key": "filament_type",
+                "value": moonraker_filament
+            },
+            handle_moonraker_response
+        )
+
+        # If spoolman is enabled, handle spoolman workflow
+        if self._printer.spoolman:
+            self.handle_spoolman_workflow(filament_type, weight)
+
+        # Run load macro if requested
+        if run_load_macro:
+            self._screen._send_action(None, "printer.gcode.script",
+                                      {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+
+    def handle_spoolman_workflow(self, filament_type, weight):
+        # Step 1: Get current active spool
+        self.get_active_spool_for_workflow(filament_type, weight)
+
+    def get_active_spool_for_workflow(self, filament_type, weight):
+        # Get current active spool
+        try:
+            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
+            if result and "result" in result and result["result"]["spool_id"]:
+                active_spool_id = result["result"]["spool_id"]
+                # Delete the active spool
+                self.delete_spool(active_spool_id, filament_type, weight)
+            else:
+                # No active spool, skip to creating new one
+                self.create_new_spool(filament_type, weight)
+        except Exception as e:
+            self._screen.show_popup_message(f"Spoolman error getting active spool: {str(e)}", level=3)
+            # Continue anyway
+            self.create_new_spool(filament_type, weight)
+
+    def delete_spool(self, spool_id, filament_type, weight):
+        # Delete the spool from Spoolman
+        try:
+            result = self._screen.apiclient.post_request("server/spoolman/proxy", json={
+                "request_method": "DELETE",
+                "path": f"/v1/spool/{spool_id}"
+            })
+            if not result or result.get("error"):
+                self._screen.show_popup_message(f"Spoolman error deleting spool: {result.get('error', 'Unknown error')}", level=3)
+        except Exception as e:
+            self._screen.show_popup_message(f"Spoolman error deleting spool: {str(e)}", level=3)
+        
+        # Continue to create new spool regardless of delete success
+        self.create_new_spool(filament_type, weight)
+
+    def create_new_spool(self, filament_type, weight):
+        # Get filament ID from mapping
+        filament_data = self.spoolman_filament_mapping[filament_type]
+        filament_id = filament_data["id"]
+        hostname = f"{os.uname().nodename}.local"
+
+        # Create new spool
+        try:
+            result = self._screen.apiclient.post_request("server/spoolman/proxy", json={
+                "request_method": "POST",
+                "path": "/v1/spool",
+                "body": {
+                    "filament_id": filament_id,
+                    "initial_weight": weight,
+                    "location": hostname
+                }
+            })
+            
+            if result and "result" in result and "id" in result["result"]:
+                new_spool_id = result["result"]["id"]
+                # Set the new spool as active
+                self.set_active_spool(new_spool_id)
+            else:
+                self._screen.show_popup_message(f"Spoolman error creating spool: {result.get('error', 'Unknown error')}", level=3)
+                
+        except Exception as e:
+            self._screen.show_popup_message(f"Spoolman error creating spool: {str(e)}", level=3)
+
+    def set_active_spool(self, spool_id):
+        # Set spool as active
+        try:
+            result = self._screen.apiclient.post_request("server/spoolman/spool_id", json={
+                "spool_id": spool_id
+            })
+            if not result or result.get("error"):
+                self._screen.show_popup_message(f"Spoolman error setting active spool: {result.get('error', 'Unknown error')}", level=3)
+        except Exception as e:
+            self._screen.show_popup_message(f"Spoolman error setting active spool: {str(e)}", level=3)
+
+    def set_filament_type_original(self, widget, filament_type, dialog, run_load_macro=False):
         # Close the dialog when a filament type is selected
         dialog.destroy()
+
+        # Determine moonraker filament name (PA-GF variants both become PA-GF)
+        if filament_type.startswith("PA-GF"):
+            moonraker_filament = "PA-GF"
+        else:
+            moonraker_filament = filament_type
 
         # Define a callback function to handle the response
         def handle_response(response, method, params, *args):
             if response.get("error"):
                 self._screen.show_popup_message(f"Failed to set filament type: {response['error']['message']}", level=3)
             else:
-                self.shared_printer_config.filament = filament_type
-                self._screen.show_popup_message(f"Filament type set to {filament_type}", level=1)
+                self.shared_printer_config.filament = moonraker_filament
+                self._screen.show_popup_message(f"Filament type set to {moonraker_filament}", level=1)
                 self.update_button_labels()
-
 
         # Send Moonraker requests to set the filament type, passing the callback
         self._screen._ws.send_method(
@@ -356,10 +583,19 @@ class Panel(ScreenPanel):
             {
                 "namespace": "HS3",
                 "key": "filament_type",
-                "value": filament_type
+                "value": moonraker_filament
             },
             handle_response  # Pass the callback here
         )
+
+        # Run load macro if requested
+        if run_load_macro:
+            self._screen._send_action(None, "printer.gcode.script",
+                                      {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+
+    def set_filament_type(self, widget, filament_type, dialog):
+        # This method is kept for backward compatibility but now redirects to weight entry
+        self.open_weight_entry_dialog(widget, filament_type, dialog)
 
     def open_nozzle_selection(self, widget):
         # List of nozzle sizes
@@ -422,7 +658,7 @@ class Panel(ScreenPanel):
             handle_response  # Pass the callback here
         )
 
-    def open_custom_filament_dialog(self, widget, parent_dialog):
+    def open_custom_filament_dialog(self, widget, parent_dialog, run_load_macro=False):
         # Get the position of the parent dialog (Filament Selection Dialog)
         current_x, current_y = parent_dialog.get_position()
 
@@ -478,7 +714,7 @@ class Panel(ScreenPanel):
         confirm_button = Gtk.Button(label="Confirm")
         confirm_button.get_style_context().add_class("color1")
         confirm_button.set_size_request(150, 50)  # Set width=150, height=50 to make it larger
-        confirm_button.connect("clicked", self.confirm_custom_filament, entry, custom_dialog)
+        confirm_button.connect("clicked", self.confirm_custom_filament, entry, custom_dialog, run_load_macro)
         hbox.pack_start(confirm_button, True, True, 0)  # Set expand=True to let it take space
 
         # Create the Cancel button and set its size
@@ -498,7 +734,7 @@ class Panel(ScreenPanel):
         # Show all elements in the dialog
         custom_dialog.show_all()
 
-    def confirm_custom_filament(self, widget, entry, dialog):
+    def confirm_custom_filament(self, widget, entry, dialog, run_load_macro=False):
         # Get the custom filament name from the entry
         custom_filament = entry.get_text()
 
@@ -524,6 +760,34 @@ class Panel(ScreenPanel):
             },
             handle_response  # Pass the callback here
         )
+
+        # Handle spoolman workflow for custom filament (delete active spool only)
+        if self._printer.spoolman:
+            self.handle_custom_filament_spoolman_workflow()
+
+        # Run load macro if requested
+        if run_load_macro:
+            self._screen._send_action(None, "printer.gcode.script",
+                                      {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+
+    def handle_custom_filament_spoolman_workflow(self):
+        # For custom filament, only delete active spool, don't create new one
+        try:
+            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
+            if result and "result" in result and result["result"]["spool_id"]:
+                active_spool_id = result["result"]["spool_id"]
+                # Delete the active spool
+                try:
+                    delete_result = self._screen.apiclient.post_request("server/spoolman/proxy", json={
+                        "request_method": "DELETE",
+                        "path": f"/v1/spool/{active_spool_id}"
+                    })
+                    if not delete_result or delete_result.get("error"):
+                        self._screen.show_popup_message(f"Spoolman error deleting spool: {delete_result.get('error', 'Unknown error')}", level=3)
+                except Exception as e:
+                    self._screen.show_popup_message(f"Spoolman error deleting spool: {str(e)}", level=3)
+        except Exception as e:
+            self._screen.show_popup_message(f"Spoolman error getting active spool: {str(e)}", level=3)
 
     def update_button_labels(self):
         # Create the filament label and replace the icon
