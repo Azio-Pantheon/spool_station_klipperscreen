@@ -309,33 +309,8 @@ class BasePanel(ScreenPanel):
                 filament = value.get("filament_type", "")
                 nozzle = value.get("nozzle_size", "")
                 
-                # Build the title with filament and nozzle info
-                base_title = f"{os.uname().nodename}.local"
-                
-                # Add filament and nozzle if available
-                if filament or nozzle:
-                    config_info = []
-                    if filament:
-                        config_info.append(filament)
-                    if nozzle:
-                        config_info.append(f"{nozzle}mm")
-                    
-                    if config_info:
-                        base_title += f" | {' '.join(config_info)}"
-                
-                # Add the panel title if provided
-                if title:
-                    try:
-                        env = Environment(extensions=["jinja2.ext.i18n"], autoescape=True)
-                        env.install_gettext_translations(self._config.get_lang())
-                        j2_temp = env.from_string(title)
-                        processed_title = j2_temp.render()
-                        base_title += f" | {processed_title}"
-                    except Exception as e:
-                        logging.debug(f"Error parsing jinja for title: {title}\n{e}")
-                        base_title += f" | {title}"
-                
-                self.titlelbl.set_label(base_title)
+                # Try to get spoolman weight info
+                self._get_spoolman_weight_and_build_title(title, filament, nozzle)
                 
             except Exception as e:
                 logging.debug(f"Error processing config response: {e}")
@@ -344,6 +319,11 @@ class BasePanel(ScreenPanel):
         
         # Request the config data from Moonraker
         try:
+            # Check if websocket is available
+            if self._screen._ws is None:
+                self._set_title_fallback(title)
+                return
+                
             self._screen._ws.send_method(
                 "server.database.get_item",
                 {"namespace": "HS3"},
@@ -352,6 +332,108 @@ class BasePanel(ScreenPanel):
         except Exception as e:
             logging.debug(f"Error requesting config from Moonraker: {e}")
             # Fallback to original behavior
+            self._set_title_fallback(title)
+
+    def _get_spoolman_weight_and_build_title(self, title, filament, nozzle):
+        """Get spoolman weight and build title, with fallback if spoolman unavailable"""
+        
+        try:
+            # Check if apiclient is available
+            if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
+                self._build_final_title(title, filament, nozzle, None)
+                return
+            
+            # Get active spool ID using the same method as spoolman.py
+            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
+            if not result:
+                self._build_final_title(title, filament, nozzle, None)
+                return
+            
+            active_spool_id = result["result"]["spool_id"]
+            
+            if active_spool_id is None:
+                # No active spool
+                self._build_final_title(title, filament, nozzle, "weight untracked")
+            else:
+                # Get spool details for weight
+                self._get_spool_weight(title, filament, nozzle, active_spool_id)
+                
+        except Exception as e:
+            logging.debug(f"Error requesting spoolman data: {e}")
+            # Build title without weight info
+            self._build_final_title(title, filament, nozzle, None)
+
+    def _get_spool_weight(self, title, filament, nozzle, spool_id):
+        """Get the weight of a specific spool"""
+        
+        try:
+            # Check if apiclient is available
+            if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
+                self._build_final_title(title, filament, nozzle, "weight untracked")
+                return
+            
+            # Get spool details using the same method as spoolman.py
+            spools = self._screen.apiclient.post_request("server/spoolman/proxy", json={
+                "request_method": "GET",
+                "path": "/v1/spool?allow_archived=false",
+            })
+            
+            if not spools or "result" not in spools:
+                self._build_final_title(title, filament, nozzle, "weight untracked")
+                return
+            
+            remaining_weight = None
+            # Find the spool with matching ID
+            for spool in spools["result"]:
+                if spool.get("id") == spool_id:
+                    remaining_weight = spool.get("remaining_weight")
+                    break
+            
+            if remaining_weight is not None:
+                weight_text = f"{round(remaining_weight, 1)}g"
+            else:
+                weight_text = "weight untracked"
+                
+            self._build_final_title(title, filament, nozzle, weight_text)
+            
+        except Exception as e:
+            logging.debug(f"Error requesting spool details: {e}")
+            self._build_final_title(title, filament, nozzle, "weight untracked")
+
+    def _build_final_title(self, title, filament, nozzle, weight_info):
+        """Build the final title - this is the original logic with weight added"""
+        try:
+            base_title = f"{os.uname().nodename}.local"
+            
+            # Add filament, nozzle, and weight if available
+            config_info = []
+            if filament:
+                config_info.append(filament)
+            if nozzle:
+                config_info.append(f"{nozzle}mm")
+            if weight_info:
+                config_info.append(weight_info)
+            
+            if config_info:
+                base_title += f" | {' '.join(config_info)}"
+            
+            # Add the panel title if provided
+            if title:
+                try:
+                    env = Environment(extensions=["jinja2.ext.i18n"], autoescape=True)
+                    env.install_gettext_translations(self._config.get_lang())
+                    j2_temp = env.from_string(title)
+                    processed_title = j2_temp.render()
+                    base_title += f" | {processed_title}"
+                except Exception as e:
+                    logging.debug(f"Error parsing jinja for title: {title}\n{e}")
+                    base_title += f" | {title}"
+            
+            self.titlelbl.set_label(base_title)
+            
+        except Exception as e:
+            logging.debug(f"Error building final title: {e}")
+            # Final fallback
             self._set_title_fallback(title)
 
     def _set_title_fallback(self, title):
