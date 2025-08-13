@@ -868,6 +868,9 @@ class Panel(ScreenPanel):
         # Show the button with its new content
         self.buttons['set_nozzle'].show_all()
 
+        self.refresh_title()
+
+
     def load_filament_nozzle(self):
 
         # Define a callback function to handle the response
@@ -894,6 +897,115 @@ class Panel(ScreenPanel):
             },
             handle_response  # Pass the callback here
         )
+
+    def refresh_title(self):
+        try:
+            import os
+            
+            # Build the title string
+            hostname = os.uname().nodename
+            base_title = f"{hostname}.local"
+            
+            # Add filament and nozzle info if available
+            filament = ""
+            nozzle = ""
+            
+            if (hasattr(self.shared_printer_config, 'filament') and 
+                self.shared_printer_config.filament):
+                filament = self.shared_printer_config.filament
+                base_title += f" | {filament}"
+                
+            if (hasattr(self.shared_printer_config, 'nozzle') and 
+                self.shared_printer_config.nozzle):
+                nozzle = self.shared_printer_config.nozzle
+                base_title += f" {nozzle}mm"
+            
+            # Get spoolman weight and update title
+            self._get_spoolman_weight_for_title(base_title, " | Extrude")
+            
+            return True
+            
+        except Exception as e:
+            logging.error(f"Error updating title: {e}")
+            return False
+
+    def _get_spoolman_weight_for_title(self, base_title, suffix):
+        """Get spoolman weight and update the title"""
+        
+        try:
+            # Check if apiclient is available
+            if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
+                # No spoolman, just add suffix and update
+                final_title = base_title + suffix
+                self._screen.base_panel.titlelbl.set_label(final_title)
+                logging.info(f"Title updated to: {final_title}")
+                return
+            
+            # Get active spool ID
+            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
+            if not result:
+                # No spoolman response, just add suffix and update
+                final_title = base_title + suffix
+                self._screen.base_panel.titlelbl.set_label(final_title)
+                logging.info(f"Title updated to: {final_title}")
+                return
+            
+            active_spool_id = result["result"]["spool_id"]
+            
+            if active_spool_id is None:
+                # No active spool
+                final_title = base_title + " weight untracked" + suffix
+                self._screen.base_panel.titlelbl.set_label(final_title)
+                logging.info(f"Title updated to: {final_title}")
+            else:
+                # Get spool details for weight
+                self._get_spool_weight_for_title(base_title, suffix, active_spool_id)
+                
+        except Exception as e:
+            logging.debug(f"Error requesting spoolman data: {e}")
+            # Fallback without weight info
+            final_title = base_title + suffix
+            self._screen.base_panel.titlelbl.set_label(final_title)
+            logging.info(f"Title updated to: {final_title}")
+
+    def _get_spool_weight_for_title(self, base_title, suffix, spool_id):
+        """Get the weight of a specific spool and update title"""
+        
+        try:
+            # Get spool details
+            spools = self._screen.apiclient.post_request("server/spoolman/proxy", json={
+                "request_method": "GET",
+                "path": "/v1/spool?allow_archived=false",
+            })
+            
+            if not spools or "result" not in spools:
+                final_title = base_title + " weight untracked" + suffix
+                self._screen.base_panel.titlelbl.set_label(final_title)
+                logging.info(f"Title updated to: {final_title}")
+                return
+            
+            remaining_weight = None
+            # Find the spool with matching ID
+            for spool in spools["result"]:
+                if spool.get("id") == spool_id:
+                    remaining_weight = spool.get("remaining_weight")
+                    break
+            
+            if remaining_weight is not None:
+                weight_text = f" {round(remaining_weight, 1)}g"
+            else:
+                weight_text = " weight untracked"
+                
+            final_title = base_title + weight_text + suffix
+            self._screen.base_panel.titlelbl.set_label(final_title)
+            logging.info(f"Title updated to: {final_title}")
+            
+        except Exception as e:
+            logging.debug(f"Error requesting spool details: {e}")
+            final_title = base_title + " weight untracked" + suffix
+            self._screen.base_panel.titlelbl.set_label(final_title)
+            logging.info(f"Title updated to: {final_title}")
+
 
 
 class ClickOutsideDialog(Gtk.Dialog):
