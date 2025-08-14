@@ -572,6 +572,7 @@ class Panel(ScreenPanel):
                 self.labels['filament_used'].set_label(
                     f"{float(data['print_stats']['filament_used']) / 1000:.1f} m"
                 )
+                self.refresh_title_weight()
             if 'info' in data["print_stats"]:
                 if ('total_layer' in data['print_stats']['info']
                         and data["print_stats"]['info']['total_layer'] is not None):
@@ -886,3 +887,18 @@ class Panel(ScreenPanel):
                 self.prime_print(widget)
         else:
             self.restart(widget)
+
+    def refresh_title_weight(self):
+        """Refresh the title bar to update spoolman weight"""
+        try:
+            if (hasattr(self._screen, 'base_panel') and 
+                self._screen.base_panel and 
+                hasattr(self._screen.base_panel, 'current_panel') and
+                self._screen.base_panel.current_panel):
+                
+                # Trigger a title refresh to update spoolman weight
+                current_title = self._screen.base_panel.current_panel.title
+                self._screen.base_panel.set_title(current_title)
+                
+        except Exception as e:
+            logging.debug(f"Error refreshing title weight: {e}")
