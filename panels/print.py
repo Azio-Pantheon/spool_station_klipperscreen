@@ -403,7 +403,7 @@ class Panel(ScreenPanel):
         # Check weight levels
         if remaining_weight < required_weight:
             return 'warning', required_weight, remaining_weight
-        elif remaining_weight < required_weight * 1.1:  # 10% buffer
+        elif remaining_weight < required_weight  + 150:  # 150g buffer
             return 'caution', required_weight, remaining_weight
         else:
             return 'sufficient', required_weight, remaining_weight
