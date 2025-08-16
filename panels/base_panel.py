@@ -301,7 +301,15 @@ class BasePanel(ScreenPanel):
     def set_title(self, title):
         self.titlebar.get_style_context().remove_class("message_popup_error")
         
-        # Get filament and nozzle info from Moonraker database
+        # Store title for lazy weight loading
+        self._pending_title = title
+        
+        # First, build and show title immediately WITHOUT weight (fast)
+        self._build_title_without_weight(title)
+
+    def _build_title_without_weight(self, title):
+        """Build title immediately with config info but without spoolman weight"""
+        
         def handle_config_response(response, method, params, *args):
             try:
                 result = response.get("result", {})
@@ -309,17 +317,21 @@ class BasePanel(ScreenPanel):
                 filament = value.get("filament_type", "")
                 nozzle = value.get("nozzle_size", "")
                 
-                # Try to get spoolman weight info
-                self._get_spoolman_weight_and_build_title(title, filament, nozzle)
+                # Cache config for lazy weight loading
+                self._cached_config = {'filament': filament, 'nozzle': nozzle}
+                
+                # Build title immediately without weight
+                self._build_final_title(title, filament, nozzle, None)
+                
+                # Schedule lazy weight loading
+                GLib.timeout_add_seconds(2, self._lazy_load_weight)
                 
             except Exception as e:
                 logging.debug(f"Error processing config response: {e}")
-                # Fallback to original behavior
                 self._set_title_fallback(title)
         
-        # Request the config data from Moonraker
+        # Get config data quickly (this is fast)
         try:
-            # Check if websocket is available
             if self._screen._ws is None:
                 self._set_title_fallback(title)
                 return
@@ -331,9 +343,27 @@ class BasePanel(ScreenPanel):
             )
         except Exception as e:
             logging.debug(f"Error requesting config from Moonraker: {e}")
-            # Fallback to original behavior
-            self._set_title_fallback(title)
+            self._set_title_fallback(title) 
 
+    def _lazy_load_weight(self):
+        """Fetch spoolman weight after a delay and update the title"""
+        try:
+            # Use cached config to avoid duplicate API calls
+            if not hasattr(self, '_cached_config') or not hasattr(self, '_pending_title'):
+                return False
+            
+            filament = self._cached_config['filament']
+            nozzle = self._cached_config['nozzle']
+            title = self._pending_title
+            
+            # Now get spoolman weight with cached config
+            self._get_spoolman_weight_and_build_title(title, filament, nozzle)
+            
+        except Exception as e:
+            logging.debug(f"Error in lazy weight loading: {e}")
+        
+        return False  
+                     
     def _get_spoolman_weight_and_build_title(self, title, filament, nozzle):
         """Get spoolman weight and build title, with fallback if spoolman unavailable"""
         
