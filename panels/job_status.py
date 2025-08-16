@@ -39,6 +39,7 @@ class Panel(ScreenPanel):
         self.mms3 = _("mm³/s")
         self.status_grid = self.move_grid = self.time_grid = self.extrusion_grid = None
         self.is_primed = True
+        self.title_refresh_timeout = None
 
         data = ['pos_x', 'pos_y', 'pos_z', 'time_left', 'duration', 'slicer_time', 'file_time',
                 'filament_time', 'est_time', 'speed_factor', 'req_speed', 'max_accel', 'extrude_factor', 'zoffset',
@@ -333,11 +334,16 @@ class Panel(ScreenPanel):
     def activate(self):
         if self.flow_timeout is None:
             self.flow_timeout = GLib.timeout_add_seconds(2, self.update_flow)
+        if self.title_refresh_timeout is None:
+            self.title_refresh_timeout = GLib.timeout_add_seconds(5, self.periodic_title_refresh)
 
     def deactivate(self):
         if self.flow_timeout is not None:
             GLib.source_remove(self.flow_timeout)
             self.flow_timeout = None
+        if self.title_refresh_timeout is not None:
+            GLib.source_remove(self.title_refresh_timeout)
+            self.title_refresh_timeout = None
 
     def create_buttons(self):
 
@@ -572,7 +578,6 @@ class Panel(ScreenPanel):
                 self.labels['filament_used'].set_label(
                     f"{float(data['print_stats']['filament_used']) / 1000:.1f} m"
                 )
-                self.refresh_title_weight()
             if 'info' in data["print_stats"]:
                 if ('total_layer' in data['print_stats']['info']
                         and data["print_stats"]['info']['total_layer'] is not None):
@@ -887,6 +892,12 @@ class Panel(ScreenPanel):
                 self.prime_print(widget)
         else:
             self.restart(widget)
+
+    def periodic_title_refresh(self):
+        """Refresh title every 5 seconds during printing to update spoolman weight"""
+        if self.state in ["printing"]:
+            self.refresh_title_weight()
+        return True
 
     def refresh_title_weight(self):
         """Refresh the title bar to update spoolman weight"""

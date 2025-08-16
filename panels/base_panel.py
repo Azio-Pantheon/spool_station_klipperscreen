@@ -23,6 +23,9 @@ class BasePanel(ScreenPanel):
         self.current_extruder = None
         self.last_usage_report = datetime.now()
         self.usage_report = 0
+        self._cached_config = {}
+        self._pending_title = None
+        self._weight_timeout_id = None
         # Action bar buttons
         abscale = self.bts * 1.1
         self.control['back'] = self._gtk.Button('back', scale=abscale)
@@ -301,6 +304,11 @@ class BasePanel(ScreenPanel):
     def set_title(self, title):
         self.titlebar.get_style_context().remove_class("message_popup_error")
         
+        # Cancel any pending weight loading from previous panel switches
+        if self._weight_timeout_id is not None:
+            GLib.source_remove(self._weight_timeout_id)
+            self._weight_timeout_id = None
+        
         # Store title for lazy weight loading
         self._pending_title = title
         
@@ -323,8 +331,8 @@ class BasePanel(ScreenPanel):
                 # Build title immediately without weight
                 self._build_final_title(title, filament, nozzle, None)
                 
-                # Schedule lazy weight loading
-                GLib.timeout_add_seconds(2, self._lazy_load_weight)
+                # Schedule lazy weight loading (store ID to cancel if needed)
+                self._weight_timeout_id = GLib.timeout_add_seconds(2, self._lazy_load_weight)
                 
             except Exception as e:
                 logging.debug(f"Error processing config response: {e}")
@@ -343,26 +351,37 @@ class BasePanel(ScreenPanel):
             )
         except Exception as e:
             logging.debug(f"Error requesting config from Moonraker: {e}")
-            self._set_title_fallback(title) 
+            self._set_title_fallback(title)
 
     def _lazy_load_weight(self):
         """Fetch spoolman weight after a delay and update the title"""
         try:
+            # Clear timeout ID since we're executing now
+            self._weight_timeout_id = None
+            
             # Use cached config to avoid duplicate API calls
             if not hasattr(self, '_cached_config') or not hasattr(self, '_pending_title'):
                 return False
             
             filament = self._cached_config['filament']
-            nozzle = self._cached_config['nozzle']
+            nozzle = self._cached_config['nozzle'] 
             title = self._pending_title
             
-            # Now get spoolman weight with cached config
-            self._get_spoolman_weight_and_build_title(title, filament, nozzle)
+            # Only proceed if this title is still current (user hasn't switched panels)
+            current_title = ""
+            if (self.current_panel and hasattr(self.current_panel, 'title')):
+                current_title = self.current_panel.title
+            
+            if title == current_title:
+                # Now get spoolman weight with cached config
+                self._get_spoolman_weight_and_build_title(title, filament, nozzle)
+            else:
+                logging.debug("Skipping weight load - panel changed")
             
         except Exception as e:
             logging.debug(f"Error in lazy weight loading: {e}")
         
-        return False  
+        return False
                      
     def _get_spoolman_weight_and_build_title(self, title, filament, nozzle):
         """Get spoolman weight and build title, with fallback if spoolman unavailable"""
