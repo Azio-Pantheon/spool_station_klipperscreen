@@ -900,16 +900,14 @@ class Panel(ScreenPanel):
         return True
 
     def refresh_title_weight(self):
-        """Refresh the title bar to update spoolman weight"""
+        """Trigger a more efficient weight refresh that doesn't cause flashing"""
         try:
             if (hasattr(self._screen, 'base_panel') and 
                 self._screen.base_panel and 
-                hasattr(self._screen.base_panel, 'current_panel') and
-                self._screen.base_panel.current_panel):
+                hasattr(self._screen.base_panel, '_lazy_load_weight')):
                 
-                # Trigger a title refresh to update spoolman weight
-                current_title = self._screen.base_panel.current_panel.title
-                self._screen.base_panel.set_title(current_title)
+                # Directly trigger weight update without full title rebuild
+                self._screen.base_panel._lazy_load_weight()
                 
         except Exception as e:
             logging.debug(f"Error refreshing title weight: {e}")

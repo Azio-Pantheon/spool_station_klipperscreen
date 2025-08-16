@@ -26,6 +26,9 @@ class BasePanel(ScreenPanel):
         self._cached_config = {}
         self._pending_title = None
         self._weight_timeout_id = None
+        self._current_weight_info = None  # Track current weight to prevent flashing
+        self._current_panel_title = None  # Track current panel to detect switches
+        
         # Action bar buttons
         abscale = self.bts * 1.1
         self.control['back'] = self._gtk.Button('back', scale=abscale)
@@ -270,7 +273,7 @@ class BasePanel(ScreenPanel):
                     elif self.titlebar_name_type == "short":
                         name = device.split()[1] if len(device.split()) > 1 else device
                         name = f"{name[:1].upper()}: "
-                self.labels[device].set_label(f"{name}{int(temp)}°")
+                self.labels[device].set_label(f"{name}{int(temp)}Â°")
 
         if (self.current_extruder and 'toolhead' in data and 'extruder' in data['toolhead']
                 and data["toolhead"]["extruder"] != self.current_extruder):
@@ -304,6 +307,9 @@ class BasePanel(ScreenPanel):
     def set_title(self, title):
         self.titlebar.get_style_context().remove_class("message_popup_error")
         
+        # Check if this is a panel switch or just a refresh
+        is_panel_switch = (self._current_panel_title != title)
+        
         # Cancel any pending weight loading from previous panel switches
         if self._weight_timeout_id is not None:
             GLib.source_remove(self._weight_timeout_id)
@@ -311,9 +317,16 @@ class BasePanel(ScreenPanel):
         
         # Store title for lazy weight loading
         self._pending_title = title
+        self._current_panel_title = title
         
-        # First, build and show title immediately WITHOUT weight (fast)
-        self._build_title_without_weight(title)
+        if is_panel_switch:
+            # Clear weight info on panel switch
+            self._current_weight_info = None
+            # First, build and show title immediately WITHOUT weight (fast)
+            self._build_title_without_weight(title)
+        else:
+            # For refreshes, use existing weight if available
+            self._build_title_with_existing_weight(title)
 
     def _build_title_without_weight(self, title):
         """Build title immediately with config info but without spoolman weight"""
@@ -332,6 +345,44 @@ class BasePanel(ScreenPanel):
                 self._build_final_title(title, filament, nozzle, None)
                 
                 # Schedule lazy weight loading (store ID to cancel if needed)
+                self._weight_timeout_id = GLib.timeout_add_seconds(2, self._lazy_load_weight)
+                
+            except Exception as e:
+                logging.debug(f"Error processing config response: {e}")
+                self._set_title_fallback(title)
+        
+        # Get config data quickly (this is fast)
+        try:
+            if self._screen._ws is None:
+                self._set_title_fallback(title)
+                return
+                
+            self._screen._ws.send_method(
+                "server.database.get_item",
+                {"namespace": "HS3"},
+                handle_config_response
+            )
+        except Exception as e:
+            logging.debug(f"Error requesting config from Moonraker: {e}")
+            self._set_title_fallback(title)
+
+    def _build_title_with_existing_weight(self, title):
+        """Build title with existing weight info to avoid flashing during refreshes"""
+        
+        def handle_config_response(response, method, params, *args):
+            try:
+                result = response.get("result", {})
+                value = result.get("value", {})
+                filament = value.get("filament_type", "")
+                nozzle = value.get("nozzle_size", "")
+                
+                # Cache config for lazy weight loading
+                self._cached_config = {'filament': filament, 'nozzle': nozzle}
+                
+                # Build title with existing weight info to prevent flashing
+                self._build_final_title(title, filament, nozzle, self._current_weight_info)
+                
+                # Still schedule weight update, but don't clear existing weight
                 self._weight_timeout_id = GLib.timeout_add_seconds(2, self._lazy_load_weight)
                 
             except Exception as e:
@@ -389,28 +440,30 @@ class BasePanel(ScreenPanel):
         try:
             # Check if apiclient is available
             if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
-                self._build_final_title(title, filament, nozzle, None)
+                self._build_final_title(title, filament, nozzle, self._current_weight_info)
                 return
             
             # Get active spool ID using the same method as spoolman.py
             result = self._screen.apiclient.send_request("server/spoolman/spool_id")
             if not result:
-                self._build_final_title(title, filament, nozzle, None)
+                self._build_final_title(title, filament, nozzle, self._current_weight_info)
                 return
             
             active_spool_id = result["result"]["spool_id"]
             
             if active_spool_id is None:
                 # No active spool
-                self._build_final_title(title, filament, nozzle, "weight untracked")
+                weight_info = "weight untracked"
+                self._current_weight_info = weight_info
+                self._build_final_title(title, filament, nozzle, weight_info)
             else:
                 # Get spool details for weight
                 self._get_spool_weight(title, filament, nozzle, active_spool_id)
                 
         except Exception as e:
             logging.debug(f"Error requesting spoolman data: {e}")
-            # Build title without weight info
-            self._build_final_title(title, filament, nozzle, None)
+            # Build title with existing weight info
+            self._build_final_title(title, filament, nozzle, self._current_weight_info)
 
     def _get_spool_weight(self, title, filament, nozzle, spool_id):
         """Get the weight of a specific spool"""
@@ -418,7 +471,9 @@ class BasePanel(ScreenPanel):
         try:
             # Check if apiclient is available
             if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
-                self._build_final_title(title, filament, nozzle, "weight untracked")
+                weight_info = "weight untracked"
+                self._current_weight_info = weight_info
+                self._build_final_title(title, filament, nozzle, weight_info)
                 return
             
             # Get spool details using the same method as spoolman.py
@@ -428,7 +483,9 @@ class BasePanel(ScreenPanel):
             })
             
             if not spools or "result" not in spools:
-                self._build_final_title(title, filament, nozzle, "weight untracked")
+                weight_info = "weight untracked"
+                self._current_weight_info = weight_info
+                self._build_final_title(title, filament, nozzle, weight_info)
                 return
             
             remaining_weight = None
@@ -443,11 +500,14 @@ class BasePanel(ScreenPanel):
             else:
                 weight_text = "weight untracked"
                 
+            self._current_weight_info = weight_text
             self._build_final_title(title, filament, nozzle, weight_text)
             
         except Exception as e:
             logging.debug(f"Error requesting spool details: {e}")
-            self._build_final_title(title, filament, nozzle, "weight untracked")
+            weight_info = "weight untracked"
+            self._current_weight_info = weight_info
+            self._build_final_title(title, filament, nozzle, weight_info)
 
     def _build_final_title(self, title, filament, nozzle, weight_info):
         """Build the final title - this is the original logic with weight added"""
