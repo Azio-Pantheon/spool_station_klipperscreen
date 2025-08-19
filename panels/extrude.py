@@ -363,14 +363,20 @@ class Panel(ScreenPanel):
         # Create weight entry dialog
         weight_dialog = ClickOutsideDialog(
             title=f"Enter Weight for {filament_type}",
-            transient_for=parent_window,  # Pass the parent window here
+            transient_for=parent_window,
             flags=Gtk.DialogFlags.MODAL
         )
-        weight_dialog.set_default_size(400, 400)
-        weight_dialog.move(current_x - 170, current_y - 70)
+        weight_dialog.set_default_size(500, 500)  # Compact size for numpad-only dialog
+        weight_dialog.move(current_x + 100, current_y)
 
-        # Connect the destroy signal to remove the keyboard when the dialog is closed
-        weight_dialog.connect("destroy", self._screen.remove_custom_keyboard)
+        # Store dialog reference for callbacks
+        self.active_weight_dialog = weight_dialog
+        self.active_filament_type = filament_type
+        self.active_run_load_macro = run_load_macro
+        
+        # Store preset info for replacing behavior
+        self.preset_weight = str(default_weight)
+        self.preset_active = True
 
         # Create a vertical box layout
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -384,41 +390,55 @@ class Panel(ScreenPanel):
         instruction_label.set_markup(f'<span font="12">Enter weight for {filament_type} (grams)</span>')
         vbox.pack_start(instruction_label, False, False, 10)
 
-        # Create a text entry field for weight
-        entry = Gtk.Entry()
-        entry.set_text(str(default_weight))
-        entry.select_region(0, -1)  # Select all text
-
-        # Connect the entry to show the virtual keyboard when focused
-        entry.connect("focus-in-event", lambda w, e: self._screen.show_custom_keyboard(entry))
-        entry.grab_focus()
-
-        vbox.pack_start(entry, True, True, 0)
-
-        # Add the keyboard below the entry field
-        keyboard = self._screen.show_custom_keyboard(entry)
-        if keyboard:
-            vbox.pack_start(keyboard, False, False, 10)
-
-        # Create a horizontal box for the confirm and cancel buttons
-        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-
-        # Create the Confirm button
-        confirm_button = Gtk.Button(label="Confirm")
-        confirm_button.get_style_context().add_class("color1")
-        confirm_button.set_size_request(150, 50)
-        confirm_button.connect("clicked", self.confirm_weight_entry, entry, weight_dialog, filament_type, run_load_macro)
-        hbox.pack_start(confirm_button, True, True, 0)
-
-        # Create the Cancel button
-        cancel_button = Gtk.Button(label="Cancel")
-        cancel_button.get_style_context().add_class("color1")
-        cancel_button.set_size_request(150, 50)
-        cancel_button.connect("clicked", lambda w: weight_dialog.destroy())
-        hbox.pack_start(cancel_button, True, True, 0)
-
-        # Pack the buttons into the vertical box
-        vbox.pack_start(hbox, False, False, 0)
+        # Create numpad (create fresh instance each time to avoid widget reuse issues)
+        from ks_includes.widgets.keypad import Keypad
+        self.weight_keypad = Keypad(
+            self._screen, 
+            self.process_weight_entry,  # Callback for final weight entry (when Enter is pressed)
+            None,  # No PID calibrate function needed
+            self.hide_weight_numpad   # Callback for hiding/closing
+        )
+        
+        # Set the initial value in the keypad's entry field to show the preset
+        self.weight_keypad.labels['entry'].set_text(str(default_weight))
+        
+        # Override the keypad's update_entry method to handle preset replacement
+        original_update_entry = self.weight_keypad.update_entry
+        
+        def custom_update_entry(widget, digit):
+            if hasattr(self, 'preset_active') and self.preset_active:
+                if digit == 'B':
+                    # Backspace on preset - clear the field
+                    self.weight_keypad.labels['entry'].set_text("")
+                    self.preset_active = False
+                elif digit not in ['E', 'PID']:
+                    # First digit pressed - replace preset with this digit
+                    self.weight_keypad.labels['entry'].set_text(digit)
+                    self.preset_active = False
+                else:
+                    # Enter or PID with preset value - use original behavior
+                    original_update_entry(widget, digit)
+            else:
+                # Use original behavior for all subsequent inputs
+                original_update_entry(widget, digit)
+        
+        # Replace the method and reconnect all button signals
+        self.weight_keypad.update_entry = custom_update_entry
+        
+        # Reconnect all the numpad buttons to use the new method
+        keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'B', '0', 'E']
+        for key in keys:
+            button_id = f'button_{key}'
+            if button_id in self.weight_keypad.labels:
+                # Disconnect existing handlers and connect to new method
+                self.weight_keypad.labels[button_id].disconnect_by_func(original_update_entry)
+                self.weight_keypad.labels[button_id].connect('clicked', custom_update_entry, key)
+        
+        # Also reconnect the entry field's activate signal
+        self.weight_keypad.labels['entry'].disconnect_by_func(original_update_entry)
+        self.weight_keypad.labels['entry'].connect("activate", custom_update_entry, "E")
+        
+        vbox.pack_start(self.weight_keypad, True, True, 10)
 
         # Add the vertical box to the dialog content area
         content_area = weight_dialog.get_content_area()
@@ -426,6 +446,56 @@ class Panel(ScreenPanel):
 
         # Show all elements in the dialog
         weight_dialog.show_all()
+
+    def process_weight_entry(self, weight):
+        """Callback function called when user finishes entering weight (e.g., presses Enter on numpad)"""
+        
+        # Validate weight
+        try:
+            weight = float(weight)
+            if weight <= 0:
+                raise ValueError("Weight must be positive")
+        except (ValueError, TypeError):
+            # Show popup warning and keep dialog open for correction
+            self._screen.show_popup_message("Invalid weight entry. Please enter a positive number.", level=3)
+            return
+
+        # Get stored values
+        filament_type = getattr(self, 'active_filament_type', None)
+        run_load_macro = getattr(self, 'active_run_load_macro', False)
+        
+        if filament_type is None:
+            self._screen.show_popup_message("Error: Filament type not found.", level=3)
+            return
+
+        # Close the weight dialog
+        if hasattr(self, 'active_weight_dialog'):
+            self.active_weight_dialog.destroy()
+            self.cleanup_weight_dialog()
+
+        # Process the filament selection with weight
+        self.process_filament_selection(filament_type, weight, run_load_macro)
+
+    def hide_weight_numpad(self, widget=None):
+        """Callback function for numpad close/hide (cancel operation)"""
+        if hasattr(self, 'active_weight_dialog'):
+            self.active_weight_dialog.destroy()
+            self.cleanup_weight_dialog()
+
+    def cleanup_weight_dialog(self):
+        """Clean up dialog-related attributes"""
+        if hasattr(self, 'active_weight_dialog'):
+            delattr(self, 'active_weight_dialog')
+        if hasattr(self, 'active_filament_type'):
+            delattr(self, 'active_filament_type')
+        if hasattr(self, 'active_run_load_macro'):
+            delattr(self, 'active_run_load_macro')
+        if hasattr(self, 'weight_keypad'):
+            delattr(self, 'weight_keypad')
+        if hasattr(self, 'preset_weight'):
+            delattr(self, 'preset_weight')
+        if hasattr(self, 'preset_active'):
+            delattr(self, 'preset_active')
 
     def confirm_weight_entry(self, widget, entry, dialog, filament_type, run_load_macro=False):
         # Get the weight from the entry

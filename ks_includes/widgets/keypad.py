@@ -85,7 +85,7 @@ class Keypad(Gtk.Box):
         elif digit == 'PID':
             self.pid_calibrate(temp)
             self.labels['entry'].set_text("")
-        elif len(text + digit) > 3:
+        elif len(text + digit) > 5:
             return
         else:
             self.labels['entry'].set_text(text + digit)
