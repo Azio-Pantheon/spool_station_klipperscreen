@@ -368,7 +368,7 @@ class Panel(MenuPanel):
         
         # Create a grid for equally spaced buttons
         button_grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True, hexpand=True, vexpand=False)
-        button_grid.set_column_spacing(5)
+        button_grid.set_column_spacing(1)
         button_grid.set_row_spacing(5)
         button_grid.set_margin_start(10)
         button_grid.set_margin_end(10)
@@ -380,12 +380,17 @@ class Panel(MenuPanel):
         # Filament Type Button
         filament_text = filament_info.get('filament', 'Not Set')
         filament_button = self._gtk.Button("filament", f"{filament_text}", "color1")
-        filament_button.set_sensitive(False)  # Disable clicking
-        
+        filament_button.get_style_context().remove_class("color1")
+        filament_button.get_style_context().add_class("button_fake")
+        filament_button.get_style_context().add_class("large-text-button")
+
+        filament_button.set_sensitive(False)
         # Nozzle Size Button  
         nozzle_text = f"{filament_info.get('nozzle', 'Not Set')}mm" if filament_info.get('nozzle') else 'Not Set'
-        nozzle_button = self._gtk.Button("extruder", f"{nozzle_text}", "color2")
-        nozzle_button.set_sensitive(False)  # Disable clicking
+        nozzle_button = self._gtk.Button("extruder", f"{nozzle_text}", "color1")
+        nozzle_button.get_style_context().remove_class("color1")
+        nozzle_button.get_style_context().add_class("button_fake")
+        nozzle_button.set_sensitive(False) 
         
         if button_count == 2:
             # 2 buttons - each takes half the width
@@ -394,8 +399,10 @@ class Panel(MenuPanel):
         else:
             # 3 buttons - each takes one third
             # Weight Button (only if spoolman enabled)
-            weight_button = self._gtk.Button("spool", f"{weight_info}", "color3")
-            weight_button.set_sensitive(False)  # Disable clicking
+            weight_button = self._gtk.Button("spool", f"{weight_info}", "color1")
+            weight_button.get_style_context().remove_class("color1")
+            weight_button.get_style_context().add_class("button_fake")
+            weight_button.set_sensitive(False)
             
             button_grid.attach(filament_button, 0, 0, 1, 1)
             button_grid.attach(nozzle_button, 1, 0, 1, 1)
@@ -426,30 +433,6 @@ class Panel(MenuPanel):
                 
         except Exception as e:
             logging.debug(f"Error refreshing filament info: {e}")
-
-    def update_filament_buttons(self):
-        """Update just the button text without recreating the whole panel"""
-        try:
-            filament_info = self.get_filament_nozzle_info()
-            
-            # Update filament button
-            if 'filament_button' in self.labels:
-                filament_text = filament_info.get('filament', 'Not Set')
-                self.labels['filament_button'].set_label(f"{filament_text}")
-            
-            # Update nozzle button
-            if 'nozzle_button' in self.labels:
-                nozzle_text = f"{filament_info.get('nozzle', 'Not Set')}mm" if filament_info.get('nozzle') else 'Not Set'
-                self.labels['nozzle_button'].set_label(f"{nozzle_text}")
-            
-            # Update weight button if it exists
-            if 'weight_button' in self.labels:
-                weight_info = self.get_spoolman_weight_info()
-                if weight_info is not None:
-                    self.labels['weight_button'].set_label(f"{weight_info}")
-                    
-        except Exception as e:
-            logging.debug(f"Error updating filament buttons: {e}")
 
     def get_filament_nozzle_info(self):
         """Get filament and nozzle info from cached values only - no async calls"""
