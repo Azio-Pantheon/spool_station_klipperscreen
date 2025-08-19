@@ -366,8 +366,8 @@ class Panel(ScreenPanel):
             transient_for=parent_window,
             flags=Gtk.DialogFlags.MODAL
         )
-        weight_dialog.set_default_size(400, 400)  # Compact size for numpad-only dialog
-        weight_dialog.move(current_x + 170, current_y - 70)
+        weight_dialog.set_default_size(500, 500)  # Compact size for numpad-only dialog
+        weight_dialog.move(current_x + 100, current_y)
 
         # Store dialog reference for callbacks
         self.active_weight_dialog = weight_dialog
