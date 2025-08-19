@@ -510,21 +510,28 @@ class BasePanel(ScreenPanel):
             self._build_final_title(title, filament, nozzle, weight_info)
 
     def _build_final_title(self, title, filament, nozzle, weight_info):
-        """Build the final title - this is the original logic with weight added"""
+        """Build the final title - exclude config info for main menu to avoid duplication"""
         try:
             base_title = f"{os.uname().nodename}.local"
             
-            # Add filament, nozzle, and weight if available
-            config_info = []
-            if filament:
-                config_info.append(filament)
-            if nozzle:
-                config_info.append(f"{nozzle}mm")
-            if weight_info:
-                config_info.append(weight_info)
+            # Check if this is the main menu panel - if so, skip config info since it's shown in buttons
+            is_main_menu = (
+                self.current_panel and 
+                hasattr(self.current_panel, 'create_filament_info_panel')
+            )
             
-            if config_info:
-                base_title += f" | {' '.join(config_info)}"
+            # Add filament, nozzle, and weight only if NOT main menu
+            if not is_main_menu:
+                config_info = []
+                if filament:
+                    config_info.append(filament)
+                if nozzle:
+                    config_info.append(f"{nozzle}mm")
+                if weight_info:
+                    config_info.append(weight_info)
+                
+                if config_info:
+                    base_title += f" | {' '.join(config_info)}"
             
             # Add the panel title if provided
             if title:

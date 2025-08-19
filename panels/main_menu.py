@@ -356,61 +356,100 @@ class Panel(MenuPanel):
         self.prime_button.show()
 
     def create_filament_info_panel(self):
-        """Create panel showing filament type, nozzle size, and weight info"""
-        
-        # Create the main container
-        info_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
-        info_box.get_style_context().add_class('filament-info-panel')
-        info_box.set_margin_start(15)
-        info_box.set_margin_end(15)
-        info_box.set_margin_top(15)
-        info_box.set_margin_bottom(15)
-        
-        # Title
-        title_label = Gtk.Label()
-        title_label.set_markup('<span font="16" weight="bold">Filament Information</span>')
-        title_label.set_halign(Gtk.Align.START)
-        info_box.pack_start(title_label, False, False, 0)
+        """Create panel showing filament type, nozzle size, and weight info as buttons"""
         
         # Get the filament and nozzle info
         filament_info = self.get_filament_nozzle_info()
-        
-        # Filament Type
-        filament_row = self.create_info_row("Filament Type:", filament_info.get('filament', 'Not Set'))
-        info_box.pack_start(filament_row, False, False, 5)
-        
-        # Nozzle Size
-        nozzle_text = f"{filament_info.get('nozzle', 'Not Set')}mm" if filament_info.get('nozzle') else 'Not Set'
-        nozzle_row = self.create_info_row("Nozzle Size:", nozzle_text)
-        info_box.pack_start(nozzle_row, False, False, 5)
-        
-        # Weight info (only if spoolman enabled)
         weight_info = self.get_spoolman_weight_info()
-        if weight_info is not None:
-            weight_row = self.create_info_row("Remaining Weight:", weight_info)
-            info_box.pack_start(weight_row, False, False, 5)
         
-        return info_box
+        # Determine how many buttons we need
+        has_spoolman = weight_info is not None
+        button_count = 3 if has_spoolman else 2
+        
+        # Create a grid for equally spaced buttons
+        button_grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True, hexpand=True, vexpand=False)
+        button_grid.set_column_spacing(5)
+        button_grid.set_row_spacing(5)
+        button_grid.set_margin_start(10)
+        button_grid.set_margin_end(10)
+        button_grid.set_margin_top(10)
+        button_grid.set_margin_bottom(10)
+        # Set a fixed height for the button panel to control the ratio
+        button_grid.set_size_request(-1, 170)  # Fixed height
+        
+        # Filament Type Button
+        filament_text = filament_info.get('filament', 'Not Set')
+        filament_button = self._gtk.Button("filament", f"{filament_text}", "color1")
+        filament_button.set_sensitive(False)  # Disable clicking
+        
+        # Nozzle Size Button  
+        nozzle_text = f"{filament_info.get('nozzle', 'Not Set')}mm" if filament_info.get('nozzle') else 'Not Set'
+        nozzle_button = self._gtk.Button("extruder", f"{nozzle_text}", "color2")
+        nozzle_button.set_sensitive(False)  # Disable clicking
+        
+        if button_count == 2:
+            # 2 buttons - each takes half the width
+            button_grid.attach(filament_button, 0, 0, 1, 1)
+            button_grid.attach(nozzle_button, 1, 0, 1, 1)
+        else:
+            # 3 buttons - each takes one third
+            # Weight Button (only if spoolman enabled)
+            weight_button = self._gtk.Button("spool", f"{weight_info}", "color3")
+            weight_button.set_sensitive(False)  # Disable clicking
+            
+            button_grid.attach(filament_button, 0, 0, 1, 1)
+            button_grid.attach(nozzle_button, 1, 0, 1, 1)
+            button_grid.attach(weight_button, 2, 0, 1, 1)
+        
+        # Store button references for later updates
+        self.labels['filament_button'] = filament_button
+        self.labels['nozzle_button'] = nozzle_button
+        if has_spoolman:
+            self.labels['weight_button'] = weight_button
+        
+        return button_grid
 
-    def create_info_row(self, label_text, value_text):
-        """Create a row with label and value"""
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
-        
-        # Label
-        label = Gtk.Label(label=label_text)
-        label.set_markup(f'<span font="12">{label_text}</span>')
-        label.set_halign(Gtk.Align.START)
-        label.set_size_request(150, -1)  # Fixed width for alignment
-        
-        # Value
-        value = Gtk.Label(label=value_text)
-        value.set_markup(f'<span font="12" weight="bold">{value_text}</span>')
-        value.set_halign(Gtk.Align.START)
-        
-        row.pack_start(label, False, False, 0)
-        row.pack_start(value, True, True, 0)
-        
-        return row
+    def refresh_filament_info(self):
+        """Refresh the filament info panel with current values - no async calls"""
+        try:
+            if ('filament_info' in self.labels and self.labels['filament_info'] and 
+                hasattr(self, 'left_panel') and self.left_panel):
+                
+                # Remove old filament info panel
+                if self.labels['filament_info'] in self.left_panel:
+                    self.left_panel.remove(self.labels['filament_info'])
+                
+                # Create new one with updated info (this won't trigger async calls)
+                self.labels['filament_info'] = self.create_filament_info_panel()
+                self.left_panel.add(self.labels['filament_info'])
+                self.left_panel.show_all()
+                
+        except Exception as e:
+            logging.debug(f"Error refreshing filament info: {e}")
+
+    def update_filament_buttons(self):
+        """Update just the button text without recreating the whole panel"""
+        try:
+            filament_info = self.get_filament_nozzle_info()
+            
+            # Update filament button
+            if 'filament_button' in self.labels:
+                filament_text = filament_info.get('filament', 'Not Set')
+                self.labels['filament_button'].set_label(f"{filament_text}")
+            
+            # Update nozzle button
+            if 'nozzle_button' in self.labels:
+                nozzle_text = f"{filament_info.get('nozzle', 'Not Set')}mm" if filament_info.get('nozzle') else 'Not Set'
+                self.labels['nozzle_button'].set_label(f"{nozzle_text}")
+            
+            # Update weight button if it exists
+            if 'weight_button' in self.labels:
+                weight_info = self.get_spoolman_weight_info()
+                if weight_info is not None:
+                    self.labels['weight_button'].set_label(f"{weight_info}")
+                    
+        except Exception as e:
+            logging.debug(f"Error updating filament buttons: {e}")
 
     def get_filament_nozzle_info(self):
         """Get filament and nozzle info from cached values only - no async calls"""
@@ -465,24 +504,6 @@ class Panel(MenuPanel):
             
         except Exception as e:
             logging.debug(f"Error requesting async config update: {e}")
-
-    def refresh_filament_info(self):
-        """Refresh the filament info panel with current values - no async calls"""
-        try:
-            if ('filament_info' in self.labels and self.labels['filament_info'] and 
-                hasattr(self, 'left_panel') and self.left_panel):
-                
-                # Remove old filament info panel
-                if self.labels['filament_info'] in self.left_panel:
-                    self.left_panel.remove(self.labels['filament_info'])
-                
-                # Create new one with updated info (this won't trigger async calls)
-                self.labels['filament_info'] = self.create_filament_info_panel()
-                self.left_panel.add(self.labels['filament_info'])
-                self.left_panel.show_all()
-                
-        except Exception as e:
-            logging.debug(f"Error refreshing filament info: {e}")
 
     def get_spoolman_weight_info(self):
         """Get spoolman weight info if spoolman is enabled"""
