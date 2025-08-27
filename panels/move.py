@@ -195,6 +195,10 @@ class Panel(ScreenPanel):
             else:
                 self.labels['pos_z'].set_text("Z: ?")
 
+            if "x" in homed_axes and "y" in homed_axes:
+                if "gcode_move" in data and "gcode_position" in data["gcode_move"]:
+                    self.update_toolhead_tray_position(data['gcode_move']['gcode_position'][1],data['gcode_move']['gcode_position'][0],data['gcode_move']['gcode_position'][2])
+
 
 
 
