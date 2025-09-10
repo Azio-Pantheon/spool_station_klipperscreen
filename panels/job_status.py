@@ -803,9 +803,17 @@ class Panel(ScreenPanel):
         return True
 
     def update_file_metadata(self):
+        # Initialize retry counter if it doesn't exist
+        if not hasattr(self, '_metadata_retry_count'):
+            self._metadata_retry_count = 0
+        
         if self._files.file_metadata_exists(self.filename):
             self.file_metadata = self._files.get_file_info(self.filename)
             logging.info(f"Update Metadata. File: {self.filename} Size: {self.file_metadata['size']}")
+            
+            # Reset retry counter on successful metadata retrieval
+            self._metadata_retry_count = 0
+            
             if "estimated_time" in self.file_metadata and self.timeleft_type == "slicer":
                 self.labels["est_time"].set_label(self.format_time(self.file_metadata['estimated_time']))
             if "object_height" in self.file_metadata:
@@ -820,10 +828,22 @@ class Panel(ScreenPanel):
                     self.labels['total_layers'].set_label(f"{((self.oheight - self.f_layer_h) / self.layer_h) + 1:.0f}")
             if "filament_total" in self.file_metadata:
                 self.labels['filament_total'].set_label(f"{float(self.file_metadata['filament_total']) / 1000:.1f} m")
-        else:
-            logging.debug("Cannot find file metadata. Listening for updated metadata")
+            
+            # Only try to show thumbnail if we have metadata
+            self.show_file_thumbnail()
+            
+        elif self._metadata_retry_count < 3:  # Limit to 3 retry attempts
+            self._metadata_retry_count += 1
+            logging.debug(f"Cannot find file metadata. Requesting metadata (attempt {self._metadata_retry_count}/3)")
             self._files.request_metadata(self.filename)
-        self.show_file_thumbnail()
+        else:
+            # Give up after 3 attempts to prevent infinite loop
+            logging.warning(f"Failed to get metadata for {self.filename} after {self._metadata_retry_count} attempts. Giving up.")
+            # Set empty metadata to prevent further attempts
+            self.file_metadata = {}
+            
+            # Still show thumbnail attempt even without metadata (might have cached thumbnail)
+            self.show_file_thumbnail()
 
     def prime_print(self, widget):
 

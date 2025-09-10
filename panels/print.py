@@ -351,34 +351,40 @@ class Panel(ScreenPanel):
                 return None
         return None
 
-    def get_spoolman_remaining_weight(self):
-        """
-        Get remaining weight from active spool in spoolman
-        Returns remaining weight as float or None if unavailable
-        """
-        try:
-            # Get active spool ID
-            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
-            if not result or "result" not in result or not result["result"]["spool_id"]:
-                return None
+    def get_spool_tracker_remaining_weight(self):
+            """
+            Get remaining weight from spool_tracker
+            Returns remaining weight as float or None if unavailable
+            """
+            try:
+                # Check if apiclient is available
+                if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
+                    return None
+                    
+                # Get spool tracker status
+                result = self._screen.apiclient.send_request("server/spool_tracker/status")
+                if not result or "result" not in result:
+                    return None
                 
-            active_spool_id = result["result"]["spool_id"]
-            
-            # Get spool details
-            spool_result = self._screen.apiclient.post_request("server/spoolman/proxy", json={
-                "request_method": "GET",
-                "path": f"/v1/spool/{active_spool_id}"
-            })
-            
-            if spool_result and "result" in spool_result and "remaining_weight" in spool_result["result"]:
-                return float(spool_result["result"]["remaining_weight"])
+                tracker_data = result.get("result", {})
                 
-        except Exception as e:
-            logging.error(f"Error getting spoolman remaining weight: {e}")
-            # Show popup warning for spoolman API errors
-            self._screen.show_popup_message(f"Spoolman error: {str(e)}", level=3)
-            
-        return None
+                # Check if tracking is enabled
+                can_track = tracker_data.get("can_track", False)
+                if not can_track:
+                    return None
+                
+                # Get remaining weight from tracker
+                weights = tracker_data.get("weights", {})
+                remaining_weight = weights.get("remaining_weight", 0)
+                
+                return float(remaining_weight) if remaining_weight > 0 else None
+                    
+            except Exception as e:
+                logging.error(f"Error getting spool_tracker remaining weight: {e}")
+                # Show popup warning for spool_tracker API errors
+                self._screen.show_popup_message(f"Spool tracker error: {str(e)}", level=3)
+                
+            return None
 
     def check_filament_weight(self, filename):
         """
@@ -386,24 +392,20 @@ class Panel(ScreenPanel):
         Returns tuple: (weight_status, required_weight, remaining_weight)
         weight_status: 'sufficient', 'caution', 'warning', or 'skip'
         """
-        # Only check if spoolman is enabled
-        if not self._printer.spoolman:
-            return 'skip', None, None
-            
         # Parse weight from filename
         required_weight = self.parse_weight_from_filename(filename)
         if required_weight is None:
             return 'skip', None, None
             
-        # Get remaining weight from spoolman
-        remaining_weight = self.get_spoolman_remaining_weight()
+        # Get remaining weight from spool_tracker
+        remaining_weight = self.get_spool_tracker_remaining_weight()
         if remaining_weight is None:
             return 'skip', None, None
             
         # Check weight levels
         if remaining_weight < required_weight:
             return 'warning', required_weight, remaining_weight
-        elif remaining_weight < required_weight  + 150:  # 150g buffer
+        elif remaining_weight < required_weight + 150:  # 150g buffer
             return 'caution', required_weight, remaining_weight
         else:
             return 'sufficient', required_weight, remaining_weight

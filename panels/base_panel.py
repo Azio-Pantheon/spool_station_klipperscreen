@@ -435,93 +435,64 @@ class BasePanel(ScreenPanel):
         return False
                      
     def _get_spoolman_weight_and_build_title(self, title, filament, nozzle):
-        """Get spoolman weight and build title, with fallback if spoolman unavailable"""
-        
-        try:
-            # Check if apiclient is available
-            if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
-                self._build_final_title(title, filament, nozzle, self._current_weight_info)
-                return
+            """Get spool_tracker weight and build title, with fallback if spool_tracker unavailable"""
             
-            # Get active spool ID using the same method as spoolman.py
-            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
-            if not result:
-                self._build_final_title(title, filament, nozzle, self._current_weight_info)
-                return
-            
-            active_spool_id = result["result"]["spool_id"]
-            
-            if active_spool_id is None:
-                # No active spool
-                weight_info = "weight untracked"
-                self._current_weight_info = weight_info
-                self._build_final_title(title, filament, nozzle, weight_info)
-            else:
-                # Get spool details for weight
-                self._get_spool_weight(title, filament, nozzle, active_spool_id)
+            try:
+                # Check if apiclient is available
+                if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
+                    self._build_final_title(title, filament, nozzle, self._current_weight_info)
+                    return
                 
-        except Exception as e:
-            logging.debug(f"Error requesting spoolman data: {e}")
-            # Build title with existing weight info
-            self._build_final_title(title, filament, nozzle, self._current_weight_info)
-
-    def _get_spool_weight(self, title, filament, nozzle, spool_id):
-        """Get the weight of a specific spool"""
-        
-        try:
-            # Check if apiclient is available
-            if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
-                weight_info = "weight untracked"
-                self._current_weight_info = weight_info
-                self._build_final_title(title, filament, nozzle, weight_info)
-                return
-            
-            # Get spool details using the same method as spoolman.py
-            spools = self._screen.apiclient.post_request("server/spoolman/proxy", json={
-                "request_method": "GET",
-                "path": "/v1/spool?allow_archived=false",
-            })
-            
-            if not spools or "result" not in spools:
-                weight_info = "weight untracked"
-                self._current_weight_info = weight_info
-                self._build_final_title(title, filament, nozzle, weight_info)
-                return
-            
-            remaining_weight = None
-            # Find the spool with matching ID
-            for spool in spools["result"]:
-                if spool.get("id") == spool_id:
-                    remaining_weight = spool.get("remaining_weight")
-                    break
-            
-            if remaining_weight is not None:
-                weight_text = f"{round(remaining_weight, 1)}g"
-            else:
-                weight_text = "weight untracked"
+                # Get spool tracker status
+                result = self._screen.apiclient.send_request("server/spool_tracker/status")
+                if not result:
+                    self._build_final_title(title, filament, nozzle, self._current_weight_info)
+                    return
                 
-            self._current_weight_info = weight_text
-            self._build_final_title(title, filament, nozzle, weight_text)
-            
-        except Exception as e:
-            logging.debug(f"Error requesting spool details: {e}")
-            weight_info = "weight untracked"
-            self._current_weight_info = weight_info
-            self._build_final_title(title, filament, nozzle, weight_info)
+                tracker_data = result.get("result", {})
+                
+                # Check if tracking is enabled and we have valid data
+                can_track = tracker_data.get("can_track", False)
+                
+                if not can_track:
+                    # Tracking disabled or no weight available
+                    weight_info = "weight untracked"
+                    self._current_weight_info = weight_info
+                    self._build_final_title(title, filament, nozzle, weight_info)
+                else:
+                    # Get remaining weight from tracker
+                    weights = tracker_data.get("weights", {})
+                    remaining_weight = weights.get("remaining_weight", 0)
+                    
+                    if remaining_weight > 0:
+                        weight_text = f"{round(remaining_weight, 1)}g"
+                    else:
+                        weight_text = "weight untracked"
+                        
+                    self._current_weight_info = weight_text
+                    self._build_final_title(title, filament, nozzle, weight_text)
+                    
+            except Exception as e:
+                logging.debug(f"Error requesting spool_tracker data: {e}")
+                # Build title with existing weight info
+                self._build_final_title(title, filament, nozzle, self._current_weight_info)
 
     def _build_final_title(self, title, filament, nozzle, weight_info):
         """Build the final title - exclude config info for main menu to avoid duplication"""
         try:
             base_title = f"{os.uname().nodename}.local"
             
-            # Check if this is the main menu panel - if so, skip config info since it's shown in buttons
-            is_main_menu = (
+            # Check if this is the main menu panel or extrude panel - if so, skip config info since it's shown in buttons
+            is_main_or_extrude_menu = (
                 self.current_panel and 
                 hasattr(self.current_panel, 'create_filament_info_panel')
+            ) or (
+                self.current_panel and 
+                hasattr(self.current_panel, 'spoolman_filament_mapping')
             )
             
             # Add filament, nozzle, and weight only if NOT main menu
-            if not is_main_menu:
+            if not is_main_or_extrude_menu:
                 config_info = []
                 if filament:
                     config_info.append(filament)

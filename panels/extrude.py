@@ -21,7 +21,7 @@ class Panel(ScreenPanel):
 
         self.shared_printer_config = shared_printer_config
         self.keyboard_visible = False
-
+        self.has_spool_tracker = self.check_spool_tracker_availability()
         # Spoolman filament mapping
         self.spoolman_filament_mapping = {
             "PETG-CF": {"id": 1, "default_weight": 3000},
@@ -284,7 +284,6 @@ class Panel(ScreenPanel):
             if not self.load_filament:
                 self._screen.show_popup_message("Macro LOAD_FILAMENT not found")
             else:
-                # First open filament selection, then run load macro
                 self.open_filament_selection(widget, run_load_macro=True)
 
     def enable_disable_fs(self, switch, gparams, name, x):
@@ -333,8 +332,8 @@ class Panel(ScreenPanel):
             if filament == "Custom":
                 button.connect("clicked", self.open_custom_filament_dialog, dialog, run_load_macro)
             else:
-                # Check if spoolman is enabled to decide workflow
-                if self._printer.spoolman:
+                # Check if spool_tracker is enabled to decide workflow
+                if self.has_spool_tracker:
                     button.connect("clicked", self.open_weight_entry_dialog, filament, dialog, run_load_macro)
                 else:
                     button.connect("clicked", self.set_filament_type_original, filament, dialog, run_load_macro)
@@ -366,17 +365,13 @@ class Panel(ScreenPanel):
             transient_for=parent_window,
             flags=Gtk.DialogFlags.MODAL
         )
-        weight_dialog.set_default_size(500, 500)  # Compact size for numpad-only dialog
+        weight_dialog.set_default_size(500, 500)
         weight_dialog.move(current_x + 100, current_y)
 
-        # Store dialog reference for callbacks
+        # Store dialog reference and context for callbacks
         self.active_weight_dialog = weight_dialog
         self.active_filament_type = filament_type
         self.active_run_load_macro = run_load_macro
-        
-        # Store preset info for replacing behavior
-        self.preset_weight = str(default_weight)
-        self.preset_active = True
 
         # Create a vertical box layout
         vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
@@ -390,43 +385,49 @@ class Panel(ScreenPanel):
         instruction_label.set_markup(f'<span font="12">Enter weight for {filament_type} (grams)</span>')
         vbox.pack_start(instruction_label, False, False, 10)
 
-        # Create numpad (create fresh instance each time to avoid widget reuse issues)
-        from ks_includes.widgets.keypad import Keypad
-        self.weight_keypad = Keypad(
+        # Create the custom weight keypad
+        from ks_includes.widgets.weight_keypad import WeightKeypad
+        self.weight_keypad = WeightKeypad(
             self._screen, 
-            self.process_weight_entry,  # Callback for final weight entry (when Enter is pressed)
-            None,  # No PID calibrate function needed
-            self.hide_weight_numpad   # Callback for hiding/closing
+            self.process_weight_entry,   # Callback for when user confirms weight
+            self.hide_weight_numpad      # Callback for when user cancels
         )
         
-        # Set the initial value in the keypad's entry field to show the preset
-        self.weight_keypad.labels['entry'].set_text(str(default_weight))
+        # Set the initial value to the default weight
+        self.weight_keypad.set_initial_value(default_weight)
         
+        # Store preset info for replacing behavior
+        self.preset_weight = str(default_weight)
+        self.preset_active = True
+
         # Override the keypad's update_entry method to handle preset replacement
         original_update_entry = self.weight_keypad.update_entry
         
-        def custom_update_entry(widget, digit):
+        def custom_update_entry(widget, action):
             if hasattr(self, 'preset_active') and self.preset_active:
-                if digit == 'B':
+                if action == 'B':
                     # Backspace on preset - clear the field
                     self.weight_keypad.labels['entry'].set_text("")
                     self.preset_active = False
-                elif digit not in ['E', 'PID']:
-                    # First digit pressed - replace preset with this digit
-                    self.weight_keypad.labels['entry'].set_text(digit)
+                elif action not in ['E', 'C', 'CANCEL']:
+                    # First digit/decimal pressed - replace preset with this input
+                    if action == '.':
+                        self.weight_keypad.labels['entry'].set_text("0.")
+                    else:
+                        self.weight_keypad.labels['entry'].set_text(action)
                     self.preset_active = False
                 else:
-                    # Enter or PID with preset value - use original behavior
-                    original_update_entry(widget, digit)
+                    # Enter, Clear, or Cancel with preset value - use original behavior
+                    original_update_entry(widget, action)
             else:
                 # Use original behavior for all subsequent inputs
-                original_update_entry(widget, digit)
+                original_update_entry(widget, action)
         
         # Replace the method and reconnect all button signals
         self.weight_keypad.update_entry = custom_update_entry
         
         # Reconnect all the numpad buttons to use the new method
-        keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'B', '0', 'E']
+        keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '.']
         for key in keys:
             button_id = f'button_{key}'
             if button_id in self.weight_keypad.labels:
@@ -438,6 +439,11 @@ class Panel(ScreenPanel):
         self.weight_keypad.labels['entry'].disconnect_by_func(original_update_entry)
         self.weight_keypad.labels['entry'].connect("activate", custom_update_entry, "E")
         
+        # Reconnect the bottom control buttons
+        if 'backspace' in self.weight_keypad.labels:
+            self.weight_keypad.labels['backspace'].disconnect_by_func(original_update_entry)
+            self.weight_keypad.labels['backspace'].connect('clicked', custom_update_entry, 'B')
+        
         vbox.pack_start(self.weight_keypad, True, True, 10)
 
         # Add the vertical box to the dialog content area
@@ -448,18 +454,8 @@ class Panel(ScreenPanel):
         weight_dialog.show_all()
 
     def process_weight_entry(self, weight):
-        """Callback function called when user finishes entering weight (e.g., presses Enter on numpad)"""
+        """Callback function called when user confirms weight entry"""
         
-        # Validate weight
-        try:
-            weight = float(weight)
-            if weight <= 0:
-                raise ValueError("Weight must be positive")
-        except (ValueError, TypeError):
-            # Show popup warning and keep dialog open for correction
-            self._screen.show_popup_message("Invalid weight entry. Please enter a positive number.", level=3)
-            return
-
         # Get stored values
         filament_type = getattr(self, 'active_filament_type', None)
         run_load_macro = getattr(self, 'active_run_load_macro', False)
@@ -477,25 +473,16 @@ class Panel(ScreenPanel):
         self.process_filament_selection(filament_type, weight, run_load_macro)
 
     def hide_weight_numpad(self, widget=None):
-        """Callback function for numpad close/hide (cancel operation)"""
+        """Callback function for when user cancels weight entry"""
         if hasattr(self, 'active_weight_dialog'):
             self.active_weight_dialog.destroy()
             self.cleanup_weight_dialog()
 
     def cleanup_weight_dialog(self):
         """Clean up dialog-related attributes"""
-        if hasattr(self, 'active_weight_dialog'):
-            delattr(self, 'active_weight_dialog')
-        if hasattr(self, 'active_filament_type'):
-            delattr(self, 'active_filament_type')
-        if hasattr(self, 'active_run_load_macro'):
-            delattr(self, 'active_run_load_macro')
-        if hasattr(self, 'weight_keypad'):
-            delattr(self, 'weight_keypad')
-        if hasattr(self, 'preset_weight'):
-            delattr(self, 'preset_weight')
-        if hasattr(self, 'preset_active'):
-            delattr(self, 'preset_active')
+        for attr in ['active_weight_dialog', 'active_filament_type', 'active_run_load_macro', 'weight_keypad']:
+            if hasattr(self, attr):
+                delattr(self, attr)
 
     def confirm_weight_entry(self, widget, entry, dialog, filament_type, run_load_macro=False):
         # Get the weight from the entry
@@ -519,114 +506,56 @@ class Panel(ScreenPanel):
         self.process_filament_selection(filament_type, weight, run_load_macro)
 
     def process_filament_selection(self, filament_type, weight, run_load_macro=False):
-        # Determine moonraker filament name (PA-GF variants both become PA-GF)
-        if filament_type.startswith("PA-GF"):
-            moonraker_filament = "PA-GF"
-        else:
-            moonraker_filament = filament_type
-
-        # Update Moonraker database first
-        def handle_moonraker_response(response, method, params, *args):
-            if response.get("error"):
-                self._screen.show_popup_message(f"Failed to set filament type: {response['error']['message']}", level=3)
+            # Determine moonraker filament name (PA-GF variants both become PA-GF)
+            if filament_type.startswith("PA-GF"):
+                moonraker_filament = "PA-GF"
             else:
-                self.shared_printer_config.filament = moonraker_filament
-                self._screen.show_popup_message(f"Filament type set to {moonraker_filament}", level=1)
-                self.update_button_labels()
+                moonraker_filament = filament_type
 
-        # Send Moonraker request
-        self._screen._ws.send_method(
-            "server.database.post_item", 
-            {
-                "namespace": "HS3",
-                "key": "filament_type",
-                "value": moonraker_filament
-            },
-            handle_moonraker_response
-        )
+            # Update Moonraker database first
+            def handle_moonraker_response(response, method, params, *args):
+                if response.get("error"):
+                    self._screen.show_popup_message(f"Failed to set filament type: {response['error']['message']}", level=3)
+                else:
+                    self.shared_printer_config.filament = moonraker_filament
+                    self._screen.show_popup_message(f"Filament type set to {moonraker_filament}", level=1)
+                    self.update_button_labels()
 
-        # If spoolman is enabled, handle spoolman workflow
-        if self._printer.spoolman:
-            self.handle_spoolman_workflow(filament_type, weight)
+            # Send Moonraker request
+            self._screen._ws.send_method(
+                "server.database.post_item", 
+                {
+                    "namespace": "HS3",
+                    "key": "filament_type",
+                    "value": moonraker_filament
+                },
+                handle_moonraker_response
+            )
 
-        # Run load macro if requested
-        if run_load_macro:
-            self._screen._send_action(None, "printer.gcode.script",
-                                      {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+            # Handle spool_tracker workflow (much simpler than spoolman)
+            self.handle_spool_tracker_workflow(moonraker_filament, weight)
 
-    def handle_spoolman_workflow(self, filament_type, weight):
-        # Step 1: Get current active spool
-        self.get_active_spool_for_workflow(filament_type, weight)
+            # Run load macro if requested
+            if run_load_macro:
+                self._screen._send_action(None, "printer.gcode.script",
+                                        {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
 
-    def get_active_spool_for_workflow(self, filament_type, weight):
-        # Get current active spool
+    def handle_spool_tracker_workflow(self, filament_type, weight):
+        """Set filament type and weight in spool_tracker"""
         try:
-            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
-            if result and "result" in result and result["result"]["spool_id"]:
-                active_spool_id = result["result"]["spool_id"]
-                # Delete the active spool
-                self.delete_spool(active_spool_id, filament_type, weight)
-            else:
-                # No active spool, skip to creating new one
-                self.create_new_spool(filament_type, weight)
-        except Exception as e:
-            self._screen.show_popup_message(f"Spoolman error getting active spool: {str(e)}", level=3)
-            # Continue anyway
-            self.create_new_spool(filament_type, weight)
-
-    def delete_spool(self, spool_id, filament_type, weight):
-        # Delete the spool from Spoolman
-        try:
-            result = self._screen.apiclient.post_request("server/spoolman/proxy", json={
-                "request_method": "DELETE",
-                "path": f"/v1/spool/{spool_id}"
-            })
-            if not result or result.get("error"):
-                self._screen.show_popup_message(f"Spoolman error deleting spool: {result.get('error', 'Unknown error')}", level=3)
-        except Exception as e:
-            self._screen.show_popup_message(f"Spoolman error deleting spool: {str(e)}", level=3)
-        
-        # Continue to create new spool regardless of delete success
-        self.create_new_spool(filament_type, weight)
-
-    def create_new_spool(self, filament_type, weight):
-        # Get filament ID from mapping
-        filament_data = self.spoolman_filament_mapping[filament_type]
-        filament_id = filament_data["id"]
-        hostname = f"{os.uname().nodename}.local"
-
-        # Create new spool
-        try:
-            result = self._screen.apiclient.post_request("server/spoolman/proxy", json={
-                "request_method": "POST",
-                "path": "/v1/spool",
-                "body": {
-                    "filament_id": filament_id,
-                    "initial_weight": weight,
-                    "location": hostname
-                }
+            # Use the spool_tracker API to set both filament type and weight
+            result = self._screen.apiclient.post_request("server/spool_tracker/filament", json={
+                "weight": weight
             })
             
-            if result and "result" in result and "id" in result["result"]:
-                new_spool_id = result["result"]["id"]
-                # Set the new spool as active
-                self.set_active_spool(new_spool_id)
+            if result and not result.get("error"):
+                self._screen.show_popup_message(f"Spool tracker updated: {filament_type}, {weight}g", level=1)
             else:
-                self._screen.show_popup_message(f"Spoolman error creating spool: {result.get('error', 'Unknown error')}", level=3)
+                error_msg = result.get("error", {}).get("message", "Unknown error") if result else "No response"
+                self._screen.show_popup_message(f"Spool tracker error: {error_msg}", level=3)
                 
         except Exception as e:
-            self._screen.show_popup_message(f"Spoolman error creating spool: {str(e)}", level=3)
-
-    def set_active_spool(self, spool_id):
-        # Set spool as active
-        try:
-            result = self._screen.apiclient.post_request("server/spoolman/spool_id", json={
-                "spool_id": spool_id
-            })
-            if not result or result.get("error"):
-                self._screen.show_popup_message(f"Spoolman error setting active spool: {result.get('error', 'Unknown error')}", level=3)
-        except Exception as e:
-            self._screen.show_popup_message(f"Spoolman error setting active spool: {str(e)}", level=3)
+            self._screen.show_popup_message(f"Spool tracker error: {str(e)}", level=3)
 
     def set_filament_type_original(self, widget, filament_type, dialog, run_load_macro=False):
         # Close the dialog when a filament type is selected
@@ -831,33 +760,14 @@ class Panel(ScreenPanel):
             handle_response  # Pass the callback here
         )
 
-        # Handle spoolman workflow for custom filament (delete active spool only)
-        if self._printer.spoolman:
-            self.handle_custom_filament_spoolman_workflow()
+        # Handle spool_tracker workflow for custom filament
+        if self.has_spool_tracker:
+            self.handle_spool_tracker_workflow(None, 0)
 
         # Run load macro if requested
         if run_load_macro:
             self._screen._send_action(None, "printer.gcode.script",
                                       {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
-
-    def handle_custom_filament_spoolman_workflow(self):
-        # For custom filament, only delete active spool, don't create new one
-        try:
-            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
-            if result and "result" in result and result["result"]["spool_id"]:
-                active_spool_id = result["result"]["spool_id"]
-                # Delete the active spool
-                try:
-                    delete_result = self._screen.apiclient.post_request("server/spoolman/proxy", json={
-                        "request_method": "DELETE",
-                        "path": f"/v1/spool/{active_spool_id}"
-                    })
-                    if not delete_result or delete_result.get("error"):
-                        self._screen.show_popup_message(f"Spoolman error deleting spool: {delete_result.get('error', 'Unknown error')}", level=3)
-                except Exception as e:
-                    self._screen.show_popup_message(f"Spoolman error deleting spool: {str(e)}", level=3)
-        except Exception as e:
-            self._screen.show_popup_message(f"Spoolman error getting active spool: {str(e)}", level=3)
 
     def update_button_labels(self):
         # Create the filament label and replace the icon
@@ -1000,83 +910,68 @@ class Panel(ScreenPanel):
             return False
 
     def _get_spoolman_weight_for_title(self, base_title, suffix):
-        """Get spoolman weight and update the title"""
+        """Get spool_tracker weight and update the title"""
         
         try:
             # Check if apiclient is available
             if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
-                # No spoolman, just add suffix and update
+                # No spool_tracker, just add suffix and update
                 final_title = base_title + suffix
                 self._screen.base_panel.titlelbl.set_label(final_title)
                 logging.info(f"Title updated to: {final_title}")
                 return
             
-            # Get active spool ID
-            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
+            # Get spool tracker status
+            result = self._screen.apiclient.send_request("server/spool_tracker/status")
             if not result:
-                # No spoolman response, just add suffix and update
+                # No spool_tracker response, just add suffix and update
                 final_title = base_title + suffix
                 self._screen.base_panel.titlelbl.set_label(final_title)
                 logging.info(f"Title updated to: {final_title}")
                 return
             
-            active_spool_id = result["result"]["spool_id"]
+            tracker_data = result.get("result", {})
+            can_track = tracker_data.get("can_track", False)
             
-            if active_spool_id is None:
-                # No active spool
+            if not can_track:
+                # No tracking available
                 final_title = base_title + " weight untracked" + suffix
                 self._screen.base_panel.titlelbl.set_label(final_title)
                 logging.info(f"Title updated to: {final_title}")
             else:
-                # Get spool details for weight
-                self._get_spool_weight_for_title(base_title, suffix, active_spool_id)
+                # Get remaining weight from tracker
+                weights = tracker_data.get("weights", {})
+                remaining_weight = weights.get("remaining_weight", 0)
+                
+                if remaining_weight > 0:
+                    weight_text = f" {round(remaining_weight, 1)}g"
+                else:
+                    weight_text = " weight untracked"
+                    
+                final_title = base_title + weight_text + suffix
+                self._screen.base_panel.titlelbl.set_label(final_title)
+                logging.info(f"Title updated to: {final_title}")
                 
         except Exception as e:
-            logging.debug(f"Error requesting spoolman data: {e}")
+            logging.debug(f"Error requesting spool_tracker data: {e}")
             # Fallback without weight info
             final_title = base_title + suffix
             self._screen.base_panel.titlelbl.set_label(final_title)
             logging.info(f"Title updated to: {final_title}")
 
-    def _get_spool_weight_for_title(self, base_title, suffix, spool_id):
-        """Get the weight of a specific spool and update title"""
-        
+
+    def check_spool_tracker_availability(self):
+        """Check if spool_tracker is available in moonraker"""
         try:
-            # Get spool details
-            spools = self._screen.apiclient.post_request("server/spoolman/proxy", json={
-                "request_method": "GET",
-                "path": "/v1/spool?allow_archived=false",
-            })
+            if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
+                return False
             
-            if not spools or "result" not in spools:
-                final_title = base_title + " weight untracked" + suffix
-                self._screen.base_panel.titlelbl.set_label(final_title)
-                logging.info(f"Title updated to: {final_title}")
-                return
-            
-            remaining_weight = None
-            # Find the spool with matching ID
-            for spool in spools["result"]:
-                if spool.get("id") == spool_id:
-                    remaining_weight = spool.get("remaining_weight")
-                    break
-            
-            if remaining_weight is not None:
-                weight_text = f" {round(remaining_weight, 1)}g"
-            else:
-                weight_text = " weight untracked"
-                
-            final_title = base_title + weight_text + suffix
-            self._screen.base_panel.titlelbl.set_label(final_title)
-            logging.info(f"Title updated to: {final_title}")
+            result = self._screen.apiclient.send_request("server/spool_tracker/status")
+            return result is not None and "result" in result
             
         except Exception as e:
-            logging.debug(f"Error requesting spool details: {e}")
-            final_title = base_title + " weight untracked" + suffix
-            self._screen.base_panel.titlelbl.set_label(final_title)
-            logging.info(f"Title updated to: {final_title}")
-
-
+            logging.debug(f"Spool tracker not available: {e}")
+            return False
 
 class ClickOutsideDialog(Gtk.Dialog):
     def __init__(self, *args, **kwargs):

@@ -356,65 +356,65 @@ class Panel(MenuPanel):
         self.prime_button.show()
 
     def create_filament_info_panel(self):
-        """Create panel showing filament type, nozzle size, and weight info as buttons"""
-        
-        # Get the filament and nozzle info
-        filament_info = self.get_filament_nozzle_info()
-        weight_info = self.get_spoolman_weight_info()
-        
-        # Determine how many buttons we need
-        has_spoolman = weight_info is not None
-        button_count = 3 if has_spoolman else 2
-        
-        # Create a grid for equally spaced buttons
-        button_grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True, hexpand=True, vexpand=False)
-        button_grid.set_column_spacing(1)
-        button_grid.set_row_spacing(5)
-        button_grid.set_margin_start(10)
-        button_grid.set_margin_end(10)
-        button_grid.set_margin_top(10)
-        button_grid.set_margin_bottom(10)
-        # Set a fixed height for the button panel to control the ratio
-        button_grid.set_size_request(-1, 170)  # Fixed height
-        
-        # Filament Type Button
-        filament_text = filament_info.get('filament', 'Not Set')
-        filament_button = self._gtk.Button("filament", f"{filament_text}", "color1")
-        filament_button.get_style_context().remove_class("color1")
-        filament_button.get_style_context().add_class("button_fake")
-        filament_button.get_style_context().add_class("large-text-button")
-
-        filament_button.set_sensitive(False)
-        # Nozzle Size Button  
-        nozzle_text = f"{filament_info.get('nozzle', 'Not Set')}mm" if filament_info.get('nozzle') else 'Not Set'
-        nozzle_button = self._gtk.Button("extruder", f"{nozzle_text}", "color1")
-        nozzle_button.get_style_context().remove_class("color1")
-        nozzle_button.get_style_context().add_class("button_fake")
-        nozzle_button.set_sensitive(False) 
-        
-        if button_count == 2:
-            # 2 buttons - each takes half the width
-            button_grid.attach(filament_button, 0, 0, 1, 1)
-            button_grid.attach(nozzle_button, 1, 0, 1, 1)
-        else:
-            # 3 buttons - each takes one third
-            # Weight Button (only if spoolman enabled)
-            weight_button = self._gtk.Button("spool", f"{weight_info}", "color1")
-            weight_button.get_style_context().remove_class("color1")
-            weight_button.get_style_context().add_class("button_fake")
-            weight_button.set_sensitive(False)
+            """Create panel showing filament type, nozzle size, and weight info as buttons"""
             
-            button_grid.attach(filament_button, 0, 0, 1, 1)
-            button_grid.attach(nozzle_button, 1, 0, 1, 1)
-            button_grid.attach(weight_button, 2, 0, 1, 1)
-        
-        # Store button references for later updates
-        self.labels['filament_button'] = filament_button
-        self.labels['nozzle_button'] = nozzle_button
-        if has_spoolman:
-            self.labels['weight_button'] = weight_button
-        
-        return button_grid
+            # Get the filament and nozzle info
+            filament_info = self.get_filament_nozzle_info()
+            weight_info = self.get_spool_tracker_weight_info()
+            
+            # Determine how many buttons we need
+            has_spool_tracker = weight_info is not None
+            button_count = 3 if has_spool_tracker else 2
+            
+            # Create a grid for equally spaced buttons
+            button_grid = Gtk.Grid(row_homogeneous=True, column_homogeneous=True, hexpand=True, vexpand=False)
+            button_grid.set_column_spacing(1)
+            button_grid.set_row_spacing(5)
+            button_grid.set_margin_start(10)
+            button_grid.set_margin_end(10)
+            button_grid.set_margin_top(10)
+            button_grid.set_margin_bottom(10)
+            # Set a fixed height for the button panel to control the ratio
+            button_grid.set_size_request(-1, 170)  # Fixed height
+            
+            # Filament Type Button
+            filament_text = filament_info.get('filament', 'Not Set')
+            filament_button = self._gtk.Button("filament", f"{filament_text}", "color1")
+            filament_button.get_style_context().remove_class("color1")
+            filament_button.get_style_context().add_class("button_fake")
+            filament_button.get_style_context().add_class("large-text-button")
+
+            filament_button.set_sensitive(False)
+            # Nozzle Size Button  
+            nozzle_text = f"{filament_info.get('nozzle', 'Not Set')}mm" if filament_info.get('nozzle') else 'Not Set'
+            nozzle_button = self._gtk.Button("extruder", f"{nozzle_text}", "color1")
+            nozzle_button.get_style_context().remove_class("color1")
+            nozzle_button.get_style_context().add_class("button_fake")
+            nozzle_button.set_sensitive(False) 
+            
+            if button_count == 2:
+                # 2 buttons - each takes half the width
+                button_grid.attach(filament_button, 0, 0, 1, 1)
+                button_grid.attach(nozzle_button, 1, 0, 1, 1)
+            else:
+                # 3 buttons - each takes one third
+                # Weight Button (only if spool_tracker enabled)
+                weight_button = self._gtk.Button("spool", f"{weight_info}", "color1")
+                weight_button.get_style_context().remove_class("color1")
+                weight_button.get_style_context().add_class("button_fake")
+                weight_button.set_sensitive(False)
+                
+                button_grid.attach(filament_button, 0, 0, 1, 1)
+                button_grid.attach(nozzle_button, 1, 0, 1, 1)
+                button_grid.attach(weight_button, 2, 0, 1, 1)
+            
+            # Store button references for later updates
+            self.labels['filament_button'] = filament_button
+            self.labels['nozzle_button'] = nozzle_button
+            if has_spool_tracker:
+                self.labels['weight_button'] = weight_button
+            
+            return button_grid
 
     def refresh_filament_info(self):
         """Refresh the filament info panel with current values - no async calls"""
@@ -488,39 +488,35 @@ class Panel(MenuPanel):
         except Exception as e:
             logging.debug(f"Error requesting async config update: {e}")
 
-    def get_spoolman_weight_info(self):
-        """Get spoolman weight info if spoolman is enabled"""
+    def get_spool_tracker_weight_info(self):
+        """Get spool_tracker weight info if spool_tracker is available"""
         try:
-            # Check if spoolman is enabled first (same pattern as base_panel)
-            if not hasattr(self._printer, 'spoolman') or not self._printer.spoolman:
-                return None
-                
             # Check if apiclient is available
             if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
                 return None
                 
-            # Get active spool ID
-            result = self._screen.apiclient.send_request("server/spoolman/spool_id")
+            # Get spool tracker status
+            result = self._screen.apiclient.send_request("server/spool_tracker/status")
             if not result:
                 return None
             
-            active_spool_id = result["result"]["spool_id"]
-            if active_spool_id is None:
+            tracker_data = result.get("result", {})
+            
+            # Check if tracking is enabled
+            can_track = tracker_data.get("can_track", False)
+            
+            if not can_track:
                 return "Weight Untracked"
             
-            # Get spool weight
-            spool = self._screen.apiclient.post_request("server/spoolman/proxy", json={
-                "request_method": "GET",
-                "path": f"/v1/spool/{active_spool_id}",
-            })
+            # Get remaining weight from tracker
+            weights = tracker_data.get("weights", {})
+            remaining_weight = weights.get("remaining_weight", 0)
             
-            if spool and "result" in spool:
-                remaining_weight = spool["result"].get("remaining_weight")
-                if remaining_weight is not None:
-                    return f"{round(remaining_weight, 1)}g"
-            
-            return "Weight Untracked"
+            if remaining_weight > 0:
+                return f"{round(remaining_weight, 1)}g"
+            else:
+                return "Weight Untracked"
             
         except Exception as e:
-            logging.debug(f"Error getting spoolman weight: {e}")
+            logging.debug(f"Error getting spool_tracker weight: {e}")
             return None
