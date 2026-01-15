@@ -32,17 +32,20 @@ class ObjectMap(Gtk.DrawingArea):
         self.max_x = self.max_y = 0
 
     def x_graph_to_bed(self, width, gx):
-        return (((gx - self.margin_left) * (self.max_x - self.min_x))
-                / (width - self.margin_left - self.margin_right)) + self.min_x
+        # 90° CW rotation: graph X represents bed Y
+        return (((gx - self.margin_left) * (self.max_y - self.min_y))
+                / (width - self.margin_left - self.margin_right)) + self.min_y
 
     def y_graph_to_bed(self, height, gy):
-        return ((1 - ((gy - self.margin_top) / (height - self.margin_top - self.margin_bottom)))
-                * (self.max_y - self.min_y)) + self.min_y
+        # 90° CW rotation: graph Y represents bed X  
+        return (((gy - self.margin_top) * (self.max_x - self.min_x))
+                / (height - self.margin_top - self.margin_bottom)) + self.min_x
 
     def event_cb(self, da, ev):
         # Convert coordinates from screen-graph to bed
-        x = self.x_graph_to_bed(da.get_allocated_width(), ev.x)
-        y = self.y_graph_to_bed(da.get_allocated_height(), ev.y)
+        # After 90° CW rotation: graph X→bed Y, graph Y→bed X, so swap assignment
+        y = self.x_graph_to_bed(da.get_allocated_width(), ev.x)
+        x = self.y_graph_to_bed(da.get_allocated_height(), ev.y)
         logging.info(f"Touched GRAPH {ev.x:.0f},{ev.y:.0f} BED: {x:.0f},{y:.0f}")
 
         for obj in self.objects:
@@ -96,15 +99,15 @@ class ObjectMap(Gtk.DrawingArea):
         ctx.line_to(self.margin_left, self.margin_top)
         ctx.stroke()
 
-        # Axis labels
-        ctx.move_to(0, bottom + self.font_spacing)
-        ctx.show_text(f"{self.min_x:.0f},{self.min_y:.0f}")
-        ctx.stroke()
-        ctx.move_to(right - self.font_spacing * 2, bottom + self.font_spacing)
-        ctx.show_text(f"{self.max_x:.0f},{self.min_y:.0f}")
-        ctx.stroke()
+        # Axis labels (adjusted for 90° CW rotation - origin at top-left)
         ctx.move_to(0, self.font_spacing / 2)
-        ctx.show_text(f"{self.min_x:.0f},{self.max_y:.0f}")
+        ctx.show_text(f"{self.min_y:.0f},{self.min_x:.0f}")  # Top-left: origin
+        ctx.stroke()
+        ctx.move_to(right - self.font_spacing * 2, self.font_spacing / 2)
+        ctx.show_text(f"{self.max_y:.0f},{self.min_x:.0f}")  # Top-right: max Y on new X axis
+        ctx.stroke()
+        ctx.move_to(0, bottom + self.font_spacing)
+        ctx.show_text(f"{self.min_y:.0f},{self.max_x:.0f}")  # Bottom-left: max X on new Y axis
         ctx.stroke()
 
         # middle markers
@@ -130,8 +133,8 @@ class ObjectMap(Gtk.DrawingArea):
                 ctx.set_source_rgb(.5, .5, .5)  # Grey
             for i, point in enumerate(obj["polygon"]):
                 # Convert coordinates from bed to screen-graph
-                x = self.x_bed_to_graph(da.get_allocated_width(), point[0])
-                y = self.y_bed_to_graph(da.get_allocated_height(), point[1])
+                x = self.x_bed_to_graph(da.get_allocated_width(), point[0], point[1])
+                y = self.y_bed_to_graph(da.get_allocated_height(), point[0], point[1])
                 if i == 0:
                     ctx.move_to(x, y)
                     continue
@@ -141,10 +144,12 @@ class ObjectMap(Gtk.DrawingArea):
             ctx.fill()
             ctx.stroke()
 
-    def x_bed_to_graph(self, width, bx):
-        return (((bx - self.min_x) * (width - self.margin_left - self.margin_right))
-                / (self.max_x - self.min_x)) + self.margin_left
+    def x_bed_to_graph(self, width, bx, by):
+        # 90° CW rotation: graph X (right) comes from bed Y
+        return (((by - self.min_y) * (width - self.margin_left - self.margin_right))
+                / (self.max_y - self.min_y)) + self.margin_left
 
-    def y_bed_to_graph(self, height, by):
-        return ((1 - ((by - self.min_y) / (self.max_y - self.min_y)))
-                * (height - self.margin_top - self.margin_bottom)) + self.margin_top
+    def y_bed_to_graph(self, height, bx, by):
+        # 90° CW rotation: graph Y (down) comes from bed X (no inversion)
+        return (((bx - self.min_x) * (height - self.margin_top - self.margin_bottom))
+                / (self.max_x - self.min_x)) + self.margin_top
