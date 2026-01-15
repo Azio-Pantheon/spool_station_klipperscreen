@@ -422,8 +422,9 @@ class Panel(ScreenPanel):
         if self.dragging_toolhead:
             self.dragging_toolhead = False  # Disable dragging mode
 
-            x = max(0, min(int(event.x), 540))
-            y = max(0, min(int(event.y), 540))
+            #approx 1% headroom for moving to the boundaries
+            x = max(5, min(int(event.x), 535))
+            y = max(5, min(int(event.y), 535))
 
             # Set the target position based on the final dragged position
             self.targeted_toolhead_position['x'] = x
