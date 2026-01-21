@@ -124,12 +124,12 @@ class WeightKeypad(Gtk.Box):
         Returns the weight as float if valid, None if invalid.
         """
         if not weight_str or weight_str.strip() == "":
-            return None
+            return 0
             
         try:
             weight = float(weight_str)
-            if weight <= 0:
+            if weight < 0:
                 return None
-            return weight
+            return weight  
         except ValueError:
             return None
