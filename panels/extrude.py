@@ -735,11 +735,155 @@ class Panel(ScreenPanel):
 
     def confirm_custom_filament(self, widget, entry, dialog, run_load_macro=False):
         # Get the custom filament name from the entry
-        custom_filament = entry.get_text()
+        custom_filament = entry.get_text().strip()
+        
+        if not custom_filament:
+            self._screen.show_popup_message("Please enter a filament name", level=3)
+            return
 
         # Close the custom filament dialog
         dialog.destroy()
 
+        # Open the custom specs dialog
+        self.open_custom_specs_dialog(custom_filament, run_load_macro)
+
+    def open_custom_specs_dialog(self, custom_filament, run_load_macro=False):
+        """Dialog to enter weight, density, and diameter for custom filament"""
+        
+        # Get the toplevel window (parent window) for the dialog
+        parent_window = self._screen.get_toplevel()
+        if not isinstance(parent_window, Gtk.Window):
+            parent_window = None
+
+        # Create specs entry dialog
+        specs_dialog = ClickOutsideDialog(
+            title=f"Enter Specs for {custom_filament}",
+            transient_for=parent_window,
+            flags=Gtk.DialogFlags.MODAL
+        )
+        specs_dialog.set_default_size(500, 550)
+
+        # Store dialog reference and context for callbacks
+        self.active_specs_dialog = specs_dialog
+        self.active_custom_filament = custom_filament
+        self.active_custom_run_load_macro = run_load_macro
+
+        # Create a vertical box layout
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_margin_start(20)
+        vbox.set_margin_end(20)
+        vbox.set_margin_top(20)
+        vbox.set_margin_bottom(20)
+
+        # Add instruction label
+        instruction_label = Gtk.Label()
+        instruction_label.set_markup(f'<span font="12">Enter specifications for {custom_filament}</span>')
+        vbox.pack_start(instruction_label, False, False, 10)
+
+        # Create the custom specs keypad
+        from ks_includes.widgets.weight_keypad import WeightKeypad
+        self.specs_keypad = WeightKeypad(
+            self._screen, 
+            self.process_custom_specs_entry,   # Callback for when user confirms
+            self.hide_custom_specs_numpad      # Callback for when user cancels
+        )
+        
+        # Store the current field being edited (weight, density, or diameter)
+        self.current_spec_field = 'weight'
+        self.custom_specs = {'weight': 0, 'density': 0, 'diameter': 0}
+        
+        # Set the initial field label
+        self.specs_keypad.labels['entry'].set_placeholder_text("Enter weight (grams)")
+        
+        # Create a label to show which field is being edited
+        self.field_label = Gtk.Label()
+        self.field_label.set_markup('<span font="14"><b>Weight (grams)</b></span>')
+        vbox.pack_start(self.field_label, False, False, 5)
+        
+        vbox.pack_start(self.specs_keypad, True, True, 10)
+
+        # Add the vertical box to the dialog content area
+        content_area = specs_dialog.get_content_area()
+        content_area.add(vbox)
+
+        # Show all elements in the dialog
+        specs_dialog.show_all()
+
+    def process_custom_specs_entry(self, value):
+        """Callback function called when user confirms a spec entry"""
+        
+        try:
+            float_value = float(value) if value else 0
+        except ValueError:
+            self._screen.show_popup_message("Invalid value entered", level=3)
+            return
+        
+        # Store the current field value
+        self.custom_specs[self.current_spec_field] = float_value
+        
+        # Move to next field or finish
+        if self.current_spec_field == 'weight':
+            self.current_spec_field = 'density'
+            self.field_label.set_markup('<span font="14"><b>Density (g/cm³)</b></span>')
+            self.specs_keypad.labels['entry'].set_text("")
+            self.specs_keypad.labels['entry'].set_placeholder_text("Enter density (g/cm³)")
+        elif self.current_spec_field == 'density':
+            self.current_spec_field = 'diameter'
+            self.field_label.set_markup('<span font="14"><b>Diameter (mm)</b></span>')
+            self.specs_keypad.labels['entry'].set_text("")
+            self.specs_keypad.labels['entry'].set_placeholder_text("Enter diameter (mm)")
+        else:
+            # All fields entered, process the custom filament
+            self.finish_custom_filament_setup()
+
+    def hide_custom_specs_numpad(self, widget=None):
+        """Callback function for when user cancels custom specs entry"""
+        if hasattr(self, 'active_specs_dialog'):
+            self.active_specs_dialog.destroy()
+            self.cleanup_custom_specs_dialog()
+
+    def cleanup_custom_specs_dialog(self):
+        """Clean up dialog-related attributes"""
+        for attr in ['active_specs_dialog', 'active_custom_filament', 'active_custom_run_load_macro', 
+                     'specs_keypad', 'current_spec_field', 'custom_specs', 'field_label']:
+            if hasattr(self, attr):
+                delattr(self, attr)
+
+    def finish_custom_filament_setup(self):
+        """Finalize custom filament setup after all specs are entered"""
+        
+        # Get stored values
+        custom_filament = getattr(self, 'active_custom_filament', None)
+        run_load_macro = getattr(self, 'active_custom_run_load_macro', False)
+        
+        if custom_filament is None:
+            self._screen.show_popup_message("Error: Filament name not found.", level=3)
+            return
+
+        # Close the specs dialog
+        if hasattr(self, 'active_specs_dialog'):
+            self.active_specs_dialog.destroy()
+            
+        weight = self.custom_specs.get('weight', 0)
+        density = self.custom_specs.get('density', 0)
+        diameter = self.custom_specs.get('diameter', 0)
+        
+        # Cleanup before processing
+        self.cleanup_custom_specs_dialog()
+
+        # Process based on whether all specs are provided
+        if weight == 0 or density == 0 or diameter == 0:
+            # If any value is 0, only update filament_type (current behavior)
+            logging.info(f"Custom filament {custom_filament}: incomplete specs, only updating filament_type")
+            self.process_custom_filament_type_only(custom_filament, run_load_macro)
+        else:
+            # If all values are provided, update both filament_type and filament_specs
+            logging.info(f"Custom filament {custom_filament}: weight={weight}, density={density}, diameter={diameter}")
+            self.process_custom_filament_with_specs(custom_filament, weight, density, diameter, run_load_macro)
+
+    def process_custom_filament_type_only(self, custom_filament, run_load_macro=False):
+        """Update only filament_type for custom filament (original behavior)"""
+        
         # Define a callback function to handle the response
         def handle_response(response, method, params, *args):
             if response.get("error"):
@@ -757,12 +901,64 @@ class Panel(ScreenPanel):
                 "key": "filament_type",
                 "value": custom_filament
             },
-            handle_response  # Pass the callback here
+            handle_response
         )
 
-        # Handle spool_tracker workflow for custom filament
+        # Handle spool_tracker workflow for custom filament (no specs)
         if self.has_spool_tracker:
             self.handle_spool_tracker_workflow(None, 0)
+
+        # Run load macro if requested
+        if run_load_macro:
+            self._screen._send_action(None, "printer.gcode.script",
+                                      {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+
+    def process_custom_filament_with_specs(self, custom_filament, weight, density, diameter, run_load_macro=False):
+        """Update both filament_type and filament_specs for custom filament"""
+        
+        # Define callback for filament_type update
+        def handle_type_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(f"Failed to set custom filament type: {response['error']['message']}", level=3)
+            else:
+                self.shared_printer_config.filament = custom_filament
+                self.update_button_labels()
+
+        # Define callback for filament_specs update
+        def handle_specs_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(f"Failed to set filament specs: {response['error']['message']}", level=3)
+            else:
+                self._screen.show_popup_message(f"Custom filament set: {custom_filament} ({weight}g, {density}g/cm³, {diameter}mm)", level=1)
+
+        # Send Moonraker request to set the custom filament type
+        self._screen._ws.send_method(
+            "server.database.post_item", 
+            {
+                "namespace": "HS3",
+                "key": "filament_type",
+                "value": custom_filament
+            },
+            handle_type_response
+        )
+
+        # Send Moonraker request to set the filament specs
+        self._screen._ws.send_method(
+            "server.database.post_item", 
+            {
+                "namespace": "HS3",
+                "key": "filament_specs",
+                "value": {
+                    "density": density,
+                    "diameter": diameter
+                }
+            },
+            handle_specs_response
+        )
+
+        # Handle spool_tracker workflow with weight
+        if self.has_spool_tracker:
+            self.handle_spool_tracker_workflow(custom_filament, weight)
 
         # Run load macro if requested
         if run_load_macro:
