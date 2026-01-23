@@ -540,11 +540,31 @@ class Panel(ScreenPanel):
                 self._screen._send_action(None, "printer.gcode.script",
                                         {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
 
-    def handle_spool_tracker_workflow(self, filament_type, weight):
-        """Set filament type and weight in spool_tracker"""
+    def handle_spool_tracker_workflow(self, filament_type, weight, density=None, diameter=None):
+        """Set filament type and weight in spool_tracker, optionally register custom filament"""
         try:
-            # Use the spool_tracker API to set both filament type and weight
+            # If density and diameter are provided, register as custom filament first
+            if density and diameter and density > 0 and diameter > 0:
+                logging.info(f"Registering custom filament {filament_type} with specs: "
+                           f"density={density}, diameter={diameter}")
+                
+                result = self._screen.apiclient.post_request("server/spool_tracker/custom_filament", json={
+                    "name": filament_type,
+                    "density": density,
+                    "diameter": diameter
+                })
+                
+                if result and result.get("error"):
+                    error_msg = result.get("error", {}).get("message", "Unknown error")
+                    logging.error(f"Failed to register custom filament: {error_msg}")
+                    self._screen.show_popup_message(f"Custom filament registration error: {error_msg}", level=3)
+                    return
+                else:
+                    logging.info(f"Custom filament {filament_type} registered successfully")
+            
+            # Now set the filament type and weight
             result = self._screen.apiclient.post_request("server/spool_tracker/filament", json={
+                "filament_type": filament_type,
                 "weight": weight
             })
             
@@ -904,10 +924,6 @@ class Panel(ScreenPanel):
             handle_response
         )
 
-        # Handle spool_tracker workflow for custom filament (no specs)
-        if self.has_spool_tracker:
-            self.handle_spool_tracker_workflow(None, 0)
-
         # Run load macro if requested
         if run_load_macro:
             self._screen._send_action(None, "printer.gcode.script",
@@ -956,9 +972,9 @@ class Panel(ScreenPanel):
             handle_specs_response
         )
 
-        # Handle spool_tracker workflow with weight
+        # Handle spool_tracker workflow with weight, density, and diameter
         if self.has_spool_tracker:
-            self.handle_spool_tracker_workflow(custom_filament, weight)
+            self.handle_spool_tracker_workflow(custom_filament, weight, density, diameter)
 
         # Run load macro if requested
         if run_load_macro:
