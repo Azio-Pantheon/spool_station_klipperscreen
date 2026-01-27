@@ -809,7 +809,7 @@ class Panel(ScreenPanel):
 
         # Add instruction label
         instruction_label = Gtk.Label()
-        instruction_label.set_markup(f'<span font="12">Enter specifications for {custom_filament}</span>')
+        instruction_label.set_markup(f'<span font="12">Enter specifications for {custom_filament}. Leave it empty to disable tracking</span>')
         vbox.pack_start(instruction_label, False, False, 10)
 
         # Create the custom specs keypad
