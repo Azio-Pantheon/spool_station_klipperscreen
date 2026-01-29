@@ -543,31 +543,43 @@ class Panel(ScreenPanel):
     def handle_spool_tracker_workflow(self, filament_type, weight, density=None, diameter=None):
         """Set filament type and weight in spool_tracker, optionally register custom filament"""
         try:
-            # If density and diameter are provided, register as custom filament first
-            if density and diameter and density > 0 and diameter > 0:
-                logging.info(f"Registering custom filament {filament_type} with specs: "
-                           f"density={density}, diameter={diameter}")
-                
-                result = self._screen.apiclient.post_request("server/spool_tracker/custom_filament", json={
-                    "name": filament_type,
-                    "density": density,
-                    "diameter": diameter
-                })
-                
+            is_custom = filament_type not in self.spoolman_filament_mapping
+
+            if is_custom:
+                logging.info(
+                    f"Filament '{filament_type}' not found in Spoolman mapping, "
+                    f"registering as custom filament"
+                )
+
+                result = self._screen.apiclient.post_request(
+                    "server/spool_tracker/custom_filament",
+                    json={
+                        "name": filament_type,
+                        "density": density,
+                        "diameter": diameter
+                    }
+                )
+
                 if result and result.get("error"):
                     error_msg = result.get("error", {}).get("message", "Unknown error")
-                    logging.error(f"Failed to register custom filament: {error_msg}")
-                    self._screen.show_popup_message(f"Custom filament registration error: {error_msg}", level=3)
+                    logging.error(f"Custom filament registration failed: {error_msg}")
+                    self._screen.show_popup_message(
+                        f"Custom filament error: {error_msg}",
+                        level=3
+                    )
                     return
-                else:
-                    logging.info(f"Custom filament {filament_type} registered successfully")
-            
-            # Now set the filament type and weight
-            result = self._screen.apiclient.post_request("server/spool_tracker/filament", json={
-                "filament_type": filament_type,
-                "weight": weight
-            })
-            
+
+                logging.info(f"Custom filament '{filament_type}' registered successfully")
+
+            # Always set filament + weight
+            result = self._screen.apiclient.post_request(
+                "server/spool_tracker/filament",
+                json={
+                    "filament_type": filament_type,
+                    "weight": weight
+                }
+            )
+
             if result and not result.get("error"):
                 self._screen.show_popup_message(f"Spool tracker updated: {filament_type}, {weight}g", level=1)
             else:
@@ -797,7 +809,7 @@ class Panel(ScreenPanel):
 
         # Add instruction label
         instruction_label = Gtk.Label()
-        instruction_label.set_markup(f'<span font="12">Enter specifications for {custom_filament}</span>')
+        instruction_label.set_markup(f'<span font="12">Enter specifications for {custom_filament}. Leave it empty to disable tracking</span>')
         vbox.pack_start(instruction_label, False, False, 10)
 
         # Create the custom specs keypad
@@ -923,6 +935,10 @@ class Panel(ScreenPanel):
             },
             handle_response
         )
+
+        # Handle spool_tracker workflow with weight, density, and diameter
+        if self.has_spool_tracker:
+            self.handle_spool_tracker_workflow(custom_filament, 0, 0, 0)
 
         # Run load macro if requested
         if run_load_macro:
