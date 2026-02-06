@@ -862,8 +862,68 @@ class Panel(ScreenPanel):
         elif self.current_spec_field == 'density':
             self.current_spec_field = 'diameter'
             self.field_label.set_markup('<span font="14"><b>Diameter (mm)</b></span>')
-            self.specs_keypad.labels['entry'].set_text("")
+            # Pre-fill with 1.75mm default diameter
+            self.specs_keypad.labels['entry'].set_text("1.75")
             self.specs_keypad.labels['entry'].set_placeholder_text("Enter diameter (mm)")
+            
+            # Enable preset replacement behavior for diameter
+            self.preset_diameter = "1.75"
+            self.diameter_preset_active = True
+            
+            # Store original update_entry method if not already stored
+            if not hasattr(self, 'original_specs_update_entry'):
+                self.original_specs_update_entry = self.specs_keypad.update_entry
+            
+            # Create custom update method for diameter preset replacement
+            def custom_diameter_update_entry(widget, action):
+                if hasattr(self, 'diameter_preset_active') and self.diameter_preset_active:
+                    if action == 'B':
+                        # Backspace on preset - clear the field
+                        self.specs_keypad.labels['entry'].set_text("")
+                        self.diameter_preset_active = False
+                    elif action not in ['E', 'C', 'CANCEL']:
+                        # First digit/decimal pressed - replace preset with this input
+                        if action == '.':
+                            self.specs_keypad.labels['entry'].set_text("0.")
+                        else:
+                            self.specs_keypad.labels['entry'].set_text(action)
+                        self.diameter_preset_active = False
+                    else:
+                        # Enter, Clear, or Cancel with preset value - use original behavior
+                        self.original_specs_update_entry(widget, action)
+                else:
+                    # Use original behavior for all subsequent inputs
+                    self.original_specs_update_entry(widget, action)
+            
+            # Replace the method and reconnect all button signals
+            self.specs_keypad.update_entry = custom_diameter_update_entry
+            
+            # Reconnect all the numpad buttons to use the new method
+            keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '.']
+            for key in keys:
+                button_id = f'button_{key}'
+                if button_id in self.specs_keypad.labels:
+                    # Disconnect existing handlers and connect to new method
+                    try:
+                        self.specs_keypad.labels[button_id].disconnect_by_func(self.original_specs_update_entry)
+                    except:
+                        pass  # Handler may not be connected yet
+                    self.specs_keypad.labels[button_id].connect('clicked', custom_diameter_update_entry, key)
+            
+            # Also reconnect the entry field's activate signal
+            try:
+                self.specs_keypad.labels['entry'].disconnect_by_func(self.original_specs_update_entry)
+            except:
+                pass
+            self.specs_keypad.labels['entry'].connect("activate", custom_diameter_update_entry, "E")
+            
+            # Reconnect the bottom control buttons
+            if 'backspace' in self.specs_keypad.labels:
+                try:
+                    self.specs_keypad.labels['backspace'].disconnect_by_func(self.original_specs_update_entry)
+                except:
+                    pass
+                self.specs_keypad.labels['backspace'].connect('clicked', custom_diameter_update_entry, 'B')
         else:
             # All fields entered, process the custom filament
             self.finish_custom_filament_setup()
@@ -877,7 +937,8 @@ class Panel(ScreenPanel):
     def cleanup_custom_specs_dialog(self):
         """Clean up dialog-related attributes"""
         for attr in ['active_specs_dialog', 'active_custom_filament', 'active_custom_run_load_macro', 
-                     'specs_keypad', 'current_spec_field', 'custom_specs', 'field_label']:
+                     'specs_keypad', 'current_spec_field', 'custom_specs', 'field_label',
+                     'preset_diameter', 'diameter_preset_active', 'original_specs_update_entry']:
             if hasattr(self, attr):
                 delattr(self, attr)
 
