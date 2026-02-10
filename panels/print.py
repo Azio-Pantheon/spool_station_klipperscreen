@@ -639,7 +639,9 @@ class Panel(ScreenPanel):
                         return    
                     # Handle filament type and nozzle size check
                     config_verifier = self.file_metadata['config_verifier'].copy()
-                    if self.file_metadata['filament_type'] != self.shared_printer_config.filament:
+                    if self.shared_printer_config.filament is None:
+                        config_verifier.append("Warning! Filament type is not set on this printer.")
+                    elif self.file_metadata['filament_type'] != self.shared_printer_config.filament:
                         filament_warning = f"Warning! Filament type mismatch: expected {self.file_metadata['filament_type']},\n\t but the printer filament is set to {self.shared_printer_config.filament}"
                         config_verifier.append(filament_warning)
 
@@ -648,8 +650,12 @@ class Panel(ScreenPanel):
                         if self.file_metadata['nozzle_diameter'] != nozzle_diameter:
                             nozzle_warning = f"Warning! Nozzle diameter mismatch: expected {self.file_metadata['nozzle_diameter']} mm,\n\t but but the printer nozzle size is set to {self.shared_printer_config.nozzle} mm"
                             config_verifier.append(nozzle_warning)
-                    except ValueError:
-                        config_verifier.append(f"Warning! Nozzle size is not set or invalid: '{self.shared_printer_config.nozzle}'")
+                    except (ValueError, TypeError):
+                        nozzle_val = self.shared_printer_config.nozzle
+                        if nozzle_val:
+                            config_verifier.append(f"Warning! Nozzle size is invalid: '{nozzle_val}'")
+                        else:
+                            config_verifier.append("Warning! Nozzle size is not set on this printer.")
                     #Senario 2: Config check passed
                     if (config_verifier == []):
                         label_text = f"{filename}\n"
@@ -718,43 +724,39 @@ class Panel(ScreenPanel):
                             grid.attach(weight_banner_box, 0, current_row, 2, 1)
                             current_row += 1
 
-                        # Create TextView widgets to display the YAML content with appropriate classes
+                        # Display warning strings
                         for i in range(len(warningStrings)):
-                            if (i==0):
-                                warning_label = Gtk.Label(label=f'<b><span size="20480">Warning: {warningGenericText}</span></b>')
-                                warning_label.get_style_context().add_class('compatibilityMessage-warning')
-                                warning_label.set_use_markup(True)
-                                warning_label.set_xalign(0.0)
-                                warning_label.set_margin_bottom(10)
-                                grid.attach(warning_label, 0, current_row + i + 1, 2, 1)
-                            # Create TextView for Gcode message
-                            warning_textview = Gtk.TextView()
-                            warning_textview.set_editable(False)
-                            warning_buffer = warning_textview.get_buffer()
-                            warning_buffer.set_text(warningStrings[i])
-                            warning_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-                            # Add TextView widgets to the grid
-                            grid.attach(warning_textview, 0, current_row + len(warningStrings) + i + 2, 2, 1)
+                            if i == 0:
+                                warning_header = Gtk.Label(label=f'<b><span size="20480">Warning: {warningGenericText}</span></b>')
+                                warning_header.get_style_context().add_class('compatibilityMessage-warning')
+                                warning_header.set_use_markup(True)
+                                warning_header.set_xalign(0.0)
+                                warning_header.set_margin_bottom(5)
+                                grid.attach(warning_header, 0, current_row, 2, 1)
+                                current_row += 1
+                            detail_label = Gtk.Label(label=warningStrings[i])
+                            detail_label.set_xalign(0.0)
+                            detail_label.set_line_wrap(True)
+                            detail_label.set_margin_bottom(5)
+                            grid.attach(detail_label, 0, current_row, 2, 1)
+                            current_row += 1
 
-                        # Create TextView widgets to display the YAML content with appropriate classes
+                        # Display caution strings
                         for i in range(len(cautionStrings)):
-                            if (i==0):
-                                caution_label = Gtk.Label(label=f'<b><span size="20480">Caution: {cautionGenericText}</span></b>')
-                                caution_label.get_style_context().add_class('compatibilityMessage-caution')
-                                caution_label.set_use_markup(True)
-                                caution_label.set_xalign(0.0)
-                                caution_label.set_margin_bottom(10)
-                                grid.attach(caution_label, 0, current_row + len(warningStrings) + i + 6, 2, 1)
-                            # Create TextView for Gcode message
-                            caution_textview = Gtk.TextView()
-                            caution_textview.set_editable(False)
-                            caution_buffer = caution_textview.get_buffer()
-                            caution_buffer.set_text(cautionStrings[i])
-                            caution_textview.set_wrap_mode(Gtk.WrapMode.WORD)
-
-
-                            # Add TextView widgets to the grid
-                            grid.attach(caution_textview, 0, current_row + len(warningStrings) + i + 7, 2, 1)
+                            if i == 0:
+                                caution_header = Gtk.Label(label=f'<b><span size="20480">Caution: {cautionGenericText}</span></b>')
+                                caution_header.get_style_context().add_class('compatibilityMessage-caution')
+                                caution_header.set_use_markup(True)
+                                caution_header.set_xalign(0.0)
+                                caution_header.set_margin_bottom(5)
+                                grid.attach(caution_header, 0, current_row, 2, 1)
+                                current_row += 1
+                            detail_label = Gtk.Label(label=cautionStrings[i])
+                            detail_label.set_xalign(0.0)
+                            detail_label.set_line_wrap(True)
+                            detail_label.set_margin_bottom(5)
+                            grid.attach(detail_label, 0, current_row, 2, 1)
+                            current_row += 1
 
                         # Create TextView widgets to display the YAML content with appropriate classes
                         # DangerStrings is not implemented
