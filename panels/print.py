@@ -649,7 +649,7 @@ class Panel(ScreenPanel):
                             nozzle_warning = f"Warning! Nozzle diameter mismatch: expected {self.file_metadata['nozzle_diameter']} mm,\n\t but but the printer nozzle size is set to {self.shared_printer_config.nozzle} mm"
                             config_verifier.append(nozzle_warning)
                     except ValueError:
-                        warningStrings.append(f"Error: Nozzle diameter '{self.shared_printer_config.nozzle}' is not a valid number.")
+                        config_verifier.append(f"Warning! Nozzle size is not set or invalid: '{self.shared_printer_config.nozzle}'")
                     #Senario 2: Config check passed
                     if (config_verifier == []):
                         label_text = f"{filename}\n"
