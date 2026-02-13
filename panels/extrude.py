@@ -308,7 +308,7 @@ class Panel(ScreenPanel):
         dialog = ClickOutsideDialog(title="Select Filament Type",
                                     transient_for=widget.get_toplevel(),
                                     flags=Gtk.DialogFlags.MODAL)
-        dialog.set_default_size(600, 300)  # Increased height for 6 buttons
+        dialog.set_default_size(600, 400)  # Increased height for extra row
 
         current_x, current_y = dialog.get_position()
         dialog.move(current_x, current_y - 80)  
@@ -328,7 +328,7 @@ class Panel(ScreenPanel):
         for i, filament in enumerate(filament_types):
             button = Gtk.Button(label=filament)
             button.get_style_context().add_class("color1")
-            button.set_size_request(150, 200)
+            button.set_size_request(150, 150)
             if filament == "Custom":
                 button.connect("clicked", self.open_custom_filament_dialog, dialog, run_load_macro)
             else:
@@ -338,6 +338,15 @@ class Panel(ScreenPanel):
                 else:
                     button.connect("clicked", self.set_filament_type_original, filament, dialog, run_load_macro)
             grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
+
+        # Add "Update Weight" button spanning the bottom row (only if spool_tracker available)
+        if self.has_spool_tracker:
+            weight_button = Gtk.Button(label="Update Weight Only")
+            weight_button.get_style_context().add_class("color3")
+            weight_button.set_size_request(150, 150)
+            weight_button.connect("clicked", self.open_weight_only_dialog, dialog)
+            next_row = (len(filament_types) + 2) // 3  # Next row after filament buttons
+            grid.attach(weight_button, 0, next_row, 3, 1)  # Span all 3 columns
 
         # Add the grid to the dialog content area and show all
         content_area = dialog.get_content_area()
@@ -481,6 +490,111 @@ class Panel(ScreenPanel):
     def cleanup_weight_dialog(self):
         """Clean up dialog-related attributes"""
         for attr in ['active_weight_dialog', 'active_filament_type', 'active_run_load_macro', 'weight_keypad']:
+            if hasattr(self, attr):
+                delattr(self, attr)
+
+    def open_weight_only_dialog(self, widget, parent_dialog):
+        """Open a weight entry dialog that updates only the weight (keeps current filament type)"""
+        
+        # Get the position of the parent dialog
+        current_x, current_y = parent_dialog.get_position()
+        
+        # Close the parent dialog
+        parent_dialog.destroy()
+
+        # Get the toplevel window for the dialog
+        parent_window = widget.get_toplevel()
+        if not isinstance(parent_window, Gtk.Window):
+            parent_window = None
+
+        # Create weight entry dialog
+        weight_dialog = ClickOutsideDialog(
+            title="Update Weight Only",
+            transient_for=parent_window,
+            flags=Gtk.DialogFlags.MODAL
+        )
+        weight_dialog.set_default_size(500, 500)
+        weight_dialog.move(current_x + 100, current_y)
+
+        # Store dialog reference for callbacks
+        self.active_weight_only_dialog = weight_dialog
+
+        # Create a vertical box layout
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_margin_start(20)
+        vbox.set_margin_end(20)
+        vbox.set_margin_top(20)
+        vbox.set_margin_bottom(20)
+
+        # Show current filament type so user knows what they're updating
+        current_filament = getattr(self.shared_printer_config, 'filament', 'N/A') or 'N/A'
+        instruction_label = Gtk.Label()
+        instruction_label.set_markup(
+            f'<span font="12">Enter new weight for <b>{current_filament}</b> (grams)</span>'
+        )
+        vbox.pack_start(instruction_label, False, False, 10)
+
+        # Create the weight keypad
+        from ks_includes.widgets.weight_keypad import WeightKeypad
+        self.weight_only_keypad = WeightKeypad(
+            self._screen,
+            self.process_weight_only_entry,    # Callback for confirm
+            self.hide_weight_only_numpad       # Callback for cancel
+        )
+
+        vbox.pack_start(self.weight_only_keypad, True, True, 10)
+
+        # Add the vertical box to the dialog content area
+        content_area = weight_dialog.get_content_area()
+        content_area.add(vbox)
+
+        # Show all elements in the dialog
+        weight_dialog.show_all()
+
+    def process_weight_only_entry(self, weight):
+        """Callback when user confirms weight-only entry. Updates spool_tracker weight without changing filament type."""
+        
+        # Close the dialog
+        if hasattr(self, 'active_weight_only_dialog'):
+            self.active_weight_only_dialog.destroy()
+            self.cleanup_weight_only_dialog()
+
+        try:
+            weight = float(weight)
+            if weight <= 0:
+                self._screen.show_popup_message("Weight must be positive", level=3)
+                return
+        except (ValueError, TypeError):
+            self._screen.show_popup_message("Invalid weight value", level=3)
+            return
+
+        # POST only the weight to spool_tracker (no filament_type param)
+        try:
+            result = self._screen.apiclient.post_request(
+                "server/spool_tracker/filament",
+                json={"weight": weight}
+            )
+
+            if result and not result.get("error"):
+                self._screen.show_popup_message(f"Weight updated to {weight}g", level=1)
+                self.refresh_title()
+            else:
+                error_msg = (result.get("error", {}).get("message", "Unknown error")
+                             if result else "No response")
+                self._screen.show_popup_message(f"Weight update error: {error_msg}", level=3)
+
+        except Exception as e:
+            self._screen.show_popup_message(f"Weight update error: {str(e)}", level=3)
+
+    def hide_weight_only_numpad(self, widget=None):
+        """Callback for when user cancels weight-only entry"""
+        if hasattr(self, 'active_weight_only_dialog'):
+            self.active_weight_only_dialog.destroy()
+            self.cleanup_weight_only_dialog()
+
+    def cleanup_weight_only_dialog(self):
+        """Clean up weight-only dialog attributes"""
+        for attr in ['active_weight_only_dialog', 'weight_only_keypad']:
             if hasattr(self, attr):
                 delattr(self, attr)
 
