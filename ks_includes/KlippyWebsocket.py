@@ -132,7 +132,12 @@ class KlippyWebsocket(threading.Thread):
             "params": params,
             "id": self._req_id
         }
-        self.ws.send(json.dumps(data))
+        try:
+            self.ws.send(json.dumps(data))
+        except Exception as e:
+            logging.debug(f"Error sending websocket message: {e}")
+            self.connected = False
+            return False
         return True
 
     def on_open(self, *args):
@@ -159,12 +164,12 @@ class KlippyWebsocket(threading.Thread):
             self.close()
             self.closing = False
             return
+        self.connected = False
+        logging.info("Moonraker Websocket Closed")
         if "on_close" in self._callback:
             GLib.idle_add(self._callback['on_close'],
                           _("Lost Connection to Moonraker"),
                           priority=GLib.PRIORITY_HIGH_IDLE)
-        logging.info("Moonraker Websocket Closed")
-        self.connected = False
 
     @staticmethod
     def on_error(*args):
