@@ -1037,6 +1037,8 @@ class Panel(ScreenPanel):
             else:
                 self._screen.show_popup_message(
                     f"Nozzle set: {nozzle_size}mm {nozzle_type}, {int(nozzle_life)}kg life", level=1)
+                if hasattr(self._screen, 'base_panel'):
+                    self._screen.base_panel._update_nozzle_life_label(nozzle_life, nozzle_life)
 
         self._screen._ws.send_method(
             "server.database.post_item",
@@ -1514,7 +1516,7 @@ class Panel(ScreenPanel):
         nozzle_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
 
         # Create the "Set Nozzle Size" label
-        set_nozzle_label = Gtk.Label(label="Set Nozzle Size")
+        set_nozzle_label = Gtk.Label(label="Set Nozzle")
         set_nozzle_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
 
         # Pack the labels into the vbox
