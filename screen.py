@@ -77,9 +77,10 @@ def state_execute(callback):
 
     
 class SharedPrinterConfig:
-    def __init__(self, filament='PETG-CF', nozzle='0.4', enable_prime = 1, is_purging = 0):
+    def __init__(self, filament='PETG-CF', nozzle='0.4', nozzle_type='', enable_prime = 1, is_purging = 0):
         self.filament = filament
         self.nozzle = nozzle
+        self.nozzle_type = nozzle_type
         self.enable_prime = enable_prime
         self.is_purging = is_purging
 

@@ -208,7 +208,7 @@ class BasePanel(ScreenPanel):
                 if pct < 0:
                     self.labels['nozzle_life'].set_markup(f'<span foreground="red">{pct:.0f}%</span>')
                 else:
-                    self.labels['nozzle_life'].set_label(f"{pct:.0f}%")
+                    self.labels['nozzle_life'].set_label(f"{pct:.0f}% Health")
                 self.labels['nozzle_life_box'].show_all()
             else:
                 self.labels['nozzle_life_box'].hide()

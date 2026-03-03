@@ -1023,6 +1023,9 @@ class Panel(ScreenPanel):
             if response.get("error"):
                 self._screen.show_popup_message(
                     f"Failed to set nozzle type: {response['error']['message']}", level=3)
+            else:
+                self.shared_printer_config.nozzle_type = nozzle_type
+                self.update_button_labels()
 
         self._screen._ws.send_method(
             "server.database.post_item",
@@ -1500,42 +1503,59 @@ class Panel(ScreenPanel):
 
         # Create the nozzle label and replace the icon
         if self.shared_printer_config.nozzle == '':
-            nozzle_text = "No Nozzle"
+            nozzle_size_text = "No Nozzle"
         else:
-            nozzle_text = self.shared_printer_config.nozzle
+            nozzle_size_text = f"{self.shared_printer_config.nozzle}mm"
 
-        # Create a vertical box to hold the labels
         nozzle_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        nozzle_vbox.set_vexpand(True)  # Ensure the vbox expands to the full height
-        nozzle_vbox.set_valign(Gtk.Align.CENTER)  # Center the box vertically
+        nozzle_vbox.set_vexpand(True)
+        nozzle_vbox.set_valign(Gtk.Align.CENTER)
 
-        # Create the nozzle type label
         nozzle_label = Gtk.Label()
-        nozzle_label.set_markup(f'<span font="18"><b>{nozzle_text}mm</b></span>')
+        nozzle_label.set_markup(f'<span font="18"><b>{nozzle_size_text}</b></span>')
         nozzle_label.set_justify(Gtk.Justification.CENTER)
-        nozzle_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
+        nozzle_label.set_valign(Gtk.Align.CENTER)
 
-        # Create the "Set Nozzle Size" label
         set_nozzle_label = Gtk.Label(label="Set Nozzle")
-        set_nozzle_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
+        set_nozzle_label.set_valign(Gtk.Align.CENTER)
 
-        # Pack the labels into the vbox
         nozzle_vbox.pack_start(nozzle_label, True, True, 0)
         nozzle_vbox.pack_start(set_nozzle_label, True, True, 0)
 
-        # Check if the button already has a child widget
         if self.buttons['set_nozzle'].get_children():
-            # Remove the existing child widget (icon or any existing content)
             self.buttons['set_nozzle'].get_children()[0].destroy()
 
-        # Add the new vbox with labels
         self.buttons['set_nozzle'].add(nozzle_vbox)
-
-        # Reapply the "color3" style class to the button
         self.buttons['set_nozzle'].get_style_context().add_class("color3")
-
-        # Show the button with its new content
         self.buttons['set_nozzle'].show_all()
+
+        # Overlay nozzle_type text on top of the extruder button icon
+        nozzle_type_text = getattr(self.shared_printer_config, 'nozzle_type', '')
+        icon_size = self._gtk.img_scale * self._gtk.button_image_scale
+
+        for extruder in self._printer.get_tools():
+            if extruder not in self.labels:
+                continue
+            if self._printer.extrudercount == 1:
+                image_name = "extruder"
+            else:
+                n = self._printer.get_tool_number(extruder)
+                image_name = f"extruder-{n}"
+
+            extruder_image = self._gtk.Image(image_name, icon_size, icon_size)
+
+            if nozzle_type_text:
+                icon_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                icon_vbox.set_halign(Gtk.Align.CENTER)
+                type_label = Gtk.Label()
+                type_label.set_markup(f'<span font="9"><b>{nozzle_type_text}</b></span>')
+                type_label.set_halign(Gtk.Align.CENTER)
+                icon_vbox.pack_start(type_label, False, False, 0)
+                icon_vbox.pack_start(extruder_image, False, False, 0)
+                icon_vbox.show_all()
+                self.labels[extruder].set_image(icon_vbox)
+            else:
+                self.labels[extruder].set_image(extruder_image)
 
         self.refresh_title()
 
@@ -1550,6 +1570,7 @@ class Panel(ScreenPanel):
                 value = result.get("value", {})
                 self.shared_printer_config.filament = value.get("filament_type", "")  # Set the filament type
                 self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
+                self.shared_printer_config.nozzle_type = value.get("nozzle_type", "")  # Set the nozzle type
                 
                 # Update the icons based on the extracted values
                 self.update_button_labels()
