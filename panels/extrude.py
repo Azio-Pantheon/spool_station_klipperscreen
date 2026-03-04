@@ -231,6 +231,12 @@ class Panel(ScreenPanel):
             if "current_extruder" in self.labels:
                 n = self._printer.get_tool_number(self.current_extruder)
                 self.labels["current_extruder"].set_image(self._gtk.Image(f"extruder-{n}"))
+
+        if "toolhead" in data and any(k in data["toolhead"] for k in ("nozzle_type", "nozzle_life", "remaining_nozzle_life")):
+            th = data["toolhead"]
+            if "nozzle_type" in th:
+                self.shared_printer_config.nozzle_type = th["nozzle_type"]
+            self.update_button_labels()
            
         for x in self._printer.get_filament_sensors():
             if x in data:

@@ -311,6 +311,13 @@ class BasePanel(ScreenPanel):
             self.control['temp_box'].reorder_child(self.labels[f"{self.current_extruder}_box"], 0)
             self.control['temp_box'].show_all()
 
+        if 'toolhead' in data and any(k in data['toolhead'] for k in ('nozzle_life', 'remaining_nozzle_life')):
+            th = data['toolhead']
+            self._update_nozzle_life_label(
+                th.get('nozzle_life', self._printer.get_stat('toolhead', 'nozzle_life')),
+                th.get('remaining_nozzle_life', self._printer.get_stat('toolhead', 'remaining_nozzle_life'))
+            )
+
         return False
 
     def remove(self, widget):
