@@ -708,11 +708,15 @@ class Panel(ScreenPanel):
             self.labels['status'].set_label(_("Error"))
             self._screen.show_popup_message(msg)
             self._add_timeout(self._config.get_main_config().getint("job_error_timeout", 0))
+            if not self.qr_scan_submitted:
+                self.start_qr_scan()
         elif state == "cancelling":
             self.labels["status"].set_label(_("Cancelling"))
         elif state == "cancelled" or (state == "standby" and self.state == "cancelled"):
             self.labels["status"].set_label(_("Cancelled"))
             self._add_timeout(self._config.get_main_config().getint("job_cancelled_timeout", 0))
+            if not self.qr_scan_submitted:
+                self.start_qr_scan()
         elif state == "paused":
             self.labels["status"].set_label(_("Paused"))
         elif state == "standby":
