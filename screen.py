@@ -982,7 +982,14 @@ class KlipperScreen(Gtk.Window):
 
         self.init_server(state["result"])
         # Moonraker is ready, set a loop to init the printer
-        return self.init_klipper(state["result"])
+        result = self.init_klipper(state["result"])
+
+        # Flush any pending QR code entries from previous sessions
+        import threading
+        from panels.job_status import Panel as JobStatusPanel
+        threading.Thread(target=JobStatusPanel.flush_pending_qr_codes, daemon=True).start()
+
+        return result
 
     def init_server(self, server_info):
         popup = ''
@@ -1186,6 +1193,12 @@ class KlipperScreen(Gtk.Window):
 
     def _key_press_event(self, widget, event):
         keyval_name = Gdk.keyval_name(event.keyval)
+        # Forward key events to the active panel if it handles them
+        if self._cur_panels:
+            cur_panel = self.panels.get(self._cur_panels[-1])
+            if cur_panel and hasattr(cur_panel, 'handle_key_press'):
+                if cur_panel.handle_key_press(event):
+                    return True
         if keyval_name == "Escape":
             self._menu_go_back(home=True)
         elif keyval_name == "BackSpace" and len(self._cur_panels) > 1 and self.keyboard is None:

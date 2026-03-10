@@ -1,15 +1,23 @@
 # -*- coding: utf-8 -*-
+import json
 import logging
 import os
+import socket
+import threading
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import GLib, Gtk, Pango, GdkPixbuf
+from gi.repository import GLib, Gdk, Gtk, Pango, GdkPixbuf
 from math import pi, sqrt, trunc
 from statistics import median
 from time import time
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
+
+import requests
+
+FLEET_DAEMON_URL = "http://pantheonfleet.local:8090"
+QR_PENDING_FILE = os.path.expanduser("~/.klipperscreen_qr_pending.json")
 
 
 class Panel(ScreenPanel):
@@ -40,6 +48,9 @@ class Panel(ScreenPanel):
         self.status_grid = self.move_grid = self.time_grid = self.extrusion_grid = None
         self.is_primed = True
         self.title_refresh_timeout = None
+        self.qr_scan_buffer = ""
+        self.qr_scan_active = False
+        self.qr_scan_submitted = False
 
         data = ['pos_x', 'pos_y', 'pos_z', 'time_left', 'duration', 'slicer_time', 'file_time',
                 'filament_time', 'est_time', 'speed_factor', 'req_speed', 'max_accel', 'extrude_factor', 'zoffset',
@@ -92,10 +103,17 @@ class Panel(ScreenPanel):
             self.labels[label].set_halign(Gtk.Align.START)
             self.labels[label].set_ellipsize(Pango.EllipsizeMode.END)
 
+        self.labels['qr_scan'] = Gtk.Label()
+        self.labels['qr_scan'].set_halign(Gtk.Align.START)
+        self.labels['qr_scan'].set_ellipsize(Pango.EllipsizeMode.END)
+        self.labels['qr_scan'].get_style_context().add_class("printing-status")
+        self.labels['qr_scan'].set_no_show_all(True)
+
         fi_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         fi_box.add(self.labels['file'])
         fi_box.add(self.labels['status'])
         fi_box.add(self.labels['lcdmessage'])
+        fi_box.add(self.labels['qr_scan'])
         self.grid.attach(fi_box, 1, 0, 3, 1)
 
         self.labels['darea'] = Gtk.DrawingArea()
@@ -675,11 +693,17 @@ class Panel(ScreenPanel):
     def set_state(self, state, msg=""):
         if state == "printing":
             self.labels["status"].set_label(_("Printing"))
+            self.qr_scan_active = False
+            self.qr_scan_submitted = False
+            self.qr_scan_buffer = ""
+            self.labels['qr_scan'].hide()
         elif state == "complete":
             self.update_progress(1)
             self.labels["status"].set_label(_("Complete"))
             self.buttons['left'].set_label("-")
             self._add_timeout(self._config.get_main_config().getint("job_complete_timeout", 0))
+            if not self.qr_scan_submitted:
+                self.start_qr_scan()
         elif state == "error":
             self.labels['status'].set_label(_("Error"))
             self._screen.show_popup_message(msg)
@@ -775,6 +799,200 @@ class Panel(ScreenPanel):
 
     def close_fullscreen_thumbnail(self, dialog, response_id):
         self._gtk.remove_dialog(dialog)
+
+    # ------------------------------------------------------------------
+    # QR code scanning
+    # ------------------------------------------------------------------
+
+    def start_qr_scan(self):
+        self.qr_scan_active = True
+        self.qr_scan_buffer = ""
+        self.labels['qr_scan'].set_label(_("Scan QR Code..."))
+        self.labels['qr_scan'].show()
+
+    def handle_key_press(self, event):
+        """Handle keyboard input from barcode scanner. Returns True if consumed."""
+        if not self.qr_scan_active:
+            return False
+        keyval = event.keyval
+        keyval_name = Gdk.keyval_name(keyval)
+
+        if keyval_name == "Return" or keyval_name == "KP_Enter":
+            if self.qr_scan_buffer:
+                self.submit_qr_code(self.qr_scan_buffer.strip())
+                self.qr_scan_buffer = ""
+            return True
+        elif keyval_name == "BackSpace":
+            self.qr_scan_buffer = self.qr_scan_buffer[:-1]
+            self._update_qr_scan_label()
+            return True
+        elif keyval_name == "Escape":
+            return False  # Let Escape pass through to go home
+        else:
+            char = chr(keyval) if 32 <= keyval < 127 else Gdk.keyval_to_unicode(keyval)
+            if isinstance(char, int):
+                char = chr(char) if char > 0 else ""
+            if char and char.isprintable():
+                self.qr_scan_buffer += char
+                self._update_qr_scan_label()
+                return True
+        return False
+
+    def _update_qr_scan_label(self):
+        if self.qr_scan_buffer:
+            self.labels['qr_scan'].set_label(f"QR: {self.qr_scan_buffer}")
+        else:
+            self.labels['qr_scan'].set_label(_("Scan QR Code..."))
+
+    def submit_qr_code(self, qr_code):
+        self.qr_scan_active = False
+        self.qr_scan_submitted = True
+        self.labels['qr_scan'].set_label(f"QR: {qr_code} - sending...")
+
+        # Get the moonraker job ID and printer hostname in a background thread
+        threading.Thread(
+            target=self._send_qr_code_to_fleet,
+            args=(qr_code,),
+            daemon=True,
+        ).start()
+
+    def _get_last_moonraker_job_id(self):
+        """Query Moonraker for the most recent job's ID."""
+        try:
+            res = self._screen.apiclient.send_request(
+                "server/history/list?limit=1&order=desc", timeout=5
+            )
+            if res and 'result' in res and res['result']['jobs']:
+                return str(res['result']['jobs'][0]['job_id'])
+        except Exception as e:
+            logging.error(f"[QR] Failed to get moonraker job ID: {e}")
+        return None
+
+    def _send_qr_code_to_fleet(self, qr_code):
+        """Send QR code to fleet daemon (runs in background thread)."""
+        printer_hostname = socket.gethostname()
+        if not printer_hostname.endswith('.local'):
+            printer_hostname += '.local'
+        moonraker_job_id = self._get_last_moonraker_job_id()
+
+        if not moonraker_job_id:
+            GLib.idle_add(self._qr_scan_error, qr_code,
+                          "Could not get job ID from Moonraker")
+            self._save_pending_qr(printer_hostname, "unknown", qr_code)
+            return
+
+        payload = {
+            "printer_hostname": printer_hostname,
+            "moonraker_job_id": moonraker_job_id,
+            "qr_code": qr_code,
+        }
+
+        try:
+            resp = requests.post(
+                f"{FLEET_DAEMON_URL}/history/qr-scan",
+                json=payload,
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                GLib.idle_add(self._qr_scan_success, qr_code)
+            elif resp.status_code == 409:
+                detail = resp.json().get("detail", "Duplicate QR code")
+                GLib.idle_add(self._qr_scan_duplicate, qr_code, detail)
+            else:
+                detail = resp.json().get("detail", resp.text)
+                GLib.idle_add(self._qr_scan_error, qr_code, detail)
+                self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
+        except requests.exceptions.ConnectionError:
+            GLib.idle_add(self._qr_scan_error, qr_code,
+                          "Cannot connect to fleet daemon")
+            self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
+        except Exception as e:
+            GLib.idle_add(self._qr_scan_error, qr_code, str(e))
+            self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
+
+    def _qr_scan_success(self, qr_code):
+        self.labels['qr_scan'].set_label(f"QR: {qr_code} - OK")
+        logging.info(f"[QR] Successfully assigned QR code: {qr_code}")
+
+    def _qr_scan_duplicate(self, qr_code, detail):
+        self.labels['qr_scan'].set_label(f"QR: {qr_code} - DUPLICATE")
+        self._screen.show_popup_message(f"QR code already used:\n{detail}", level=2)
+        logging.warning(f"[QR] Duplicate QR code: {qr_code} - {detail}")
+        # Allow rescanning
+        self.qr_scan_submitted = False
+        self.qr_scan_active = True
+
+    def _qr_scan_error(self, qr_code, detail):
+        self.labels['qr_scan'].set_label(f"QR: {qr_code} - saved offline")
+        self._screen.show_popup_message(
+            f"Fleet daemon error, QR saved for retry:\n{detail}", level=2
+        )
+        logging.error(f"[QR] Error sending QR code: {detail}")
+
+    @staticmethod
+    def _save_pending_qr(printer_hostname, moonraker_job_id, qr_code):
+        """Save a QR code entry to the pending queue file."""
+        pending = []
+        if os.path.exists(QR_PENDING_FILE):
+            try:
+                with open(QR_PENDING_FILE, "r") as f:
+                    pending = json.load(f)
+            except Exception:
+                pending = []
+        pending.append({
+            "printer_hostname": printer_hostname,
+            "moonraker_job_id": moonraker_job_id,
+            "qr_code": qr_code,
+        })
+        try:
+            with open(QR_PENDING_FILE, "w") as f:
+                json.dump(pending, f)
+            logging.info(f"[QR] Saved pending QR code: {qr_code} ({len(pending)} pending)")
+        except Exception as e:
+            logging.error(f"[QR] Failed to save pending QR: {e}")
+
+    @staticmethod
+    def flush_pending_qr_codes():
+        """Try to push all pending QR code entries to fleet daemon.
+        Call this on KlipperScreen startup."""
+        if not os.path.exists(QR_PENDING_FILE):
+            return
+        try:
+            with open(QR_PENDING_FILE, "r") as f:
+                pending = json.load(f)
+        except Exception:
+            return
+        if not pending:
+            return
+
+        logging.info(f"[QR] Flushing {len(pending)} pending QR code entries")
+        remaining = []
+        for entry in pending:
+            try:
+                resp = requests.post(
+                    f"{FLEET_DAEMON_URL}/history/qr-scan",
+                    json=entry,
+                    timeout=5,
+                )
+                if resp.status_code == 200:
+                    logging.info(f"[QR] Flushed pending QR: {entry['qr_code']}")
+                else:
+                    logging.warning(f"[QR] Failed to flush QR {entry['qr_code']}: {resp.status_code} {resp.text}")
+                    remaining.append(entry)
+            except Exception as e:
+                logging.warning(f"[QR] Failed to flush QR {entry['qr_code']}: {e}")
+                remaining.append(entry)
+
+        if remaining:
+            with open(QR_PENDING_FILE, "w") as f:
+                json.dump(remaining, f)
+            logging.info(f"[QR] {len(remaining)} pending QR entries remain")
+        else:
+            try:
+                os.remove(QR_PENDING_FILE)
+            except OSError:
+                pass
+            logging.info("[QR] All pending QR entries flushed")
 
     def update_filename(self, filename):
         if not filename:
