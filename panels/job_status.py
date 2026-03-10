@@ -132,6 +132,15 @@ class Panel(ScreenPanel):
         self.labels['thumbnail'] = self._gtk.Button("file")
         self.labels['thumbnail'].connect("clicked", self.show_fullscreen_thumbnail)
         self.labels['thumbnail'].set_hexpand(False)
+        # QR scan image — overlays the thumbnail spot when waiting for scan
+        self.labels['qr_scan_image'] = Gtk.Image()
+        self.labels['qr_scan_image'].set_no_show_all(True)
+        scan_img_path = "/home/hs3/KlipperScreen/docs/img/WaitForScan.png"
+        try:
+            self._qr_scan_pixbuf = GdkPixbuf.Pixbuf.new_from_file(scan_img_path)
+        except Exception as e:
+            logging.warning(f"[QR] Could not load scan image: {e}")
+            self._qr_scan_pixbuf = None
         self.labels['info_grid'] = Gtk.Grid()
         self.labels['info_grid'].attach(self.labels['thumbnail'], 0, 0, 1, 1)
         self.current_extruder = self._printer.get_stat("toolhead", "extruder")
@@ -697,6 +706,7 @@ class Panel(ScreenPanel):
             self.qr_scan_submitted = False
             self.qr_scan_buffer = ""
             self.labels['qr_scan'].hide()
+            self._hide_qr_scan_image()
         elif state == "complete":
             self.update_progress(1)
             self.labels["status"].set_label(_("Complete"))
@@ -813,6 +823,34 @@ class Panel(ScreenPanel):
         self.qr_scan_buffer = ""
         self.labels['qr_scan'].set_label(_("Scan QR Code..."))
         self.labels['qr_scan'].show()
+        self._show_qr_scan_image()
+
+    def _show_qr_scan_image(self):
+        if self._qr_scan_pixbuf is None:
+            return
+        if self._screen.vertical_mode:
+            width = self._screen.width * 0.9
+            height = self._screen.height / 4
+        else:
+            width = self._screen.width * .25
+            height = self._gtk.content_height * 0.47
+        pixbuf = self._qr_scan_pixbuf
+        scale = min(width / pixbuf.get_width(), height / pixbuf.get_height(), 1.0)
+        scaled = pixbuf.scale_simple(
+            int(pixbuf.get_width() * scale),
+            int(pixbuf.get_height() * scale),
+            GdkPixbuf.InterpType.BILINEAR,
+        )
+        self.labels['qr_scan_image'].set_from_pixbuf(scaled)
+        # Swap thumbnail for scan image
+        self.labels['thumbnail'].hide()
+        self.labels['info_grid'].attach(self.labels['qr_scan_image'], 0, 0, 1, 1)
+        self.labels['qr_scan_image'].show()
+
+    def _hide_qr_scan_image(self):
+        self.labels['qr_scan_image'].hide()
+        self.labels['info_grid'].remove(self.labels['qr_scan_image'])
+        self.labels['thumbnail'].show()
 
     def handle_key_press(self, event):
         """Handle keyboard input from barcode scanner. Returns True if consumed."""
@@ -916,6 +954,7 @@ class Panel(ScreenPanel):
 
     def _qr_scan_success(self, qr_code):
         self.labels['qr_scan'].set_label(f"QR: {qr_code} - OK")
+        self._hide_qr_scan_image()
         logging.info(f"[QR] Successfully assigned QR code: {qr_code}")
 
     def _qr_scan_duplicate(self, qr_code, detail):
