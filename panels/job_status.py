@@ -17,7 +17,7 @@ from ks_includes.KlippyGtk import find_widget
 import requests
 
 FLEET_DAEMON_URL = "http://pantheonfleet.local:8090"
-QR_PENDING_FILE = os.path.expanduser("~/.klipperscreen_qr_pending.json")
+QR_PENDING_FILE = "/home/hs3/printer_data/backup/klipperscreen_qr_pending.json"
 
 
 class Panel(ScreenPanel):
@@ -917,6 +917,7 @@ class Panel(ScreenPanel):
 
     def _qr_scan_success(self, qr_code):
         self.labels['qr_scan'].set_label(f"QR: {qr_code} - OK")
+        self._screen.show_popup_message(f"QR: {qr_code} - Scanned OK", level=1)
         logging.info(f"[QR] Successfully assigned QR code: {qr_code}")
 
     def _qr_scan_duplicate(self, qr_code, detail):
