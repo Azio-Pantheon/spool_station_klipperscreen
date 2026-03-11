@@ -809,11 +809,12 @@ class Panel(ScreenPanel):
     # ------------------------------------------------------------------
 
     def start_qr_scan(self):
+        if self.qr_scan_active:
+            return
         self.qr_scan_active = True
         self.qr_scan_buffer = ""
         self.labels['qr_scan'].set_label(_("Scan QR Code..."))
         self.labels['qr_scan'].show()
-        self._screen.show_popup_message(_("Waiting for QR code scan..."), level=1)
 
     def handle_key_press(self, event):
         """Handle keyboard input from barcode scanner. Returns True if consumed."""
@@ -917,12 +918,20 @@ class Panel(ScreenPanel):
 
     def _qr_scan_success(self, qr_code):
         self.labels['qr_scan'].set_label(f"QR: {qr_code} - OK")
-        self._screen.show_popup_message(f"QR: {qr_code} - Scanned OK", level=1)
+        self._screen.show_popup_message(
+            f'<span size="30000" weight="bold">Scanned OK</span>\n\n<span size="20000">{GLib.markup_escape_text(qr_code)}</span>',
+            level=1,
+        )
         logging.info(f"[QR] Successfully assigned QR code: {qr_code}")
 
     def _qr_scan_duplicate(self, qr_code, detail):
         self.labels['qr_scan'].set_label(f"QR: {qr_code} - DUPLICATE")
-        self._screen.show_popup_message(f"QR code already used:\n{detail}", level=2)
+        self._screen.show_popup_message(
+            f'<span size="30000" weight="bold">Duplicate QR Code</span>\n\n'
+            f'<span size="20000">{GLib.markup_escape_text(detail)}</span>\n\n'
+            f'<span size="20000" weight="bold">Scan another QR code...</span>',
+            level=2,
+        )
         logging.warning(f"[QR] Duplicate QR code: {qr_code} - {detail}")
         # Allow rescanning
         self.qr_scan_submitted = False
@@ -931,7 +940,10 @@ class Panel(ScreenPanel):
     def _qr_scan_error(self, qr_code, detail):
         self.labels['qr_scan'].set_label(f"QR: {qr_code} - saved offline")
         self._screen.show_popup_message(
-            f"Fleet daemon error, QR saved for retry:\n{detail}", level=2
+            f'<span size="30000" weight="bold">QR Saved Offline</span>\n\n'
+            f'<span size="20000">{GLib.markup_escape_text(detail)}</span>\n\n'
+            f'<span size="20000" weight="bold">Scan to retry...</span>',
+            level=2,
         )
         logging.error(f"[QR] Error sending QR code: {detail}")
         # Allow rescanning so user can retry
