@@ -815,6 +815,10 @@ class Panel(ScreenPanel):
         self.qr_scan_buffer = ""
         self.labels['qr_scan'].set_label(_("Scan QR Code..."))
         self.labels['qr_scan'].show()
+        self._screen.show_popup_message(
+            '<span size="30000" weight="bold">Waiting for QR Scan</span>',
+            level=1,
+        )
 
     def handle_key_press(self, event):
         """Handle keyboard input from barcode scanner. Returns True if consumed."""
