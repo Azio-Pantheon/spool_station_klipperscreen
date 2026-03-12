@@ -51,6 +51,7 @@ class Panel(ScreenPanel):
         self.qr_scan_buffer = ""
         self.qr_scan_active = False
         self.qr_scan_submitted = False
+        self.qr_scanned_count = 0
 
         data = ['pos_x', 'pos_y', 'pos_z', 'time_left', 'duration', 'slicer_time', 'file_time',
                 'filament_time', 'est_time', 'speed_factor', 'req_speed', 'max_accel', 'extrude_factor', 'zoffset',
@@ -696,6 +697,7 @@ class Panel(ScreenPanel):
             self.qr_scan_active = False
             self.qr_scan_submitted = False
             self.qr_scan_buffer = ""
+            self.qr_scanned_count = 0
             self.labels['qr_scan'].hide()
         elif state == "complete":
             self.update_progress(1)
@@ -855,8 +857,7 @@ class Panel(ScreenPanel):
             self.labels['qr_scan'].set_label(_("Scan QR Code..."))
 
     def submit_qr_code(self, qr_code):
-        self.qr_scan_active = False
-        self.qr_scan_submitted = True
+        self.qr_scan_active = False  # pause while sending
         self.labels['qr_scan'].set_label(f"QR: {qr_code} - sending...")
 
         # Get the moonraker job ID and printer hostname in a background thread
@@ -899,11 +900,11 @@ class Panel(ScreenPanel):
 
         try:
             resp = requests.post(
-                f"{FLEET_DAEMON_URL}/history/qr-scan",
+                f"{FLEET_DAEMON_URL}/history/qr-link",
                 json=payload,
                 timeout=5,
             )
-            if resp.status_code == 200:
+            if resp.status_code in (200, 201):
                 GLib.idle_add(self._qr_scan_success, qr_code)
             elif resp.status_code == 409:
                 detail = resp.json().get("detail", "Duplicate QR code")
@@ -921,12 +922,21 @@ class Panel(ScreenPanel):
             self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
 
     def _qr_scan_success(self, qr_code):
-        self.labels['qr_scan'].set_label(f"QR: {qr_code} - OK")
+        self.qr_scanned_count += 1
+        count = self.qr_scanned_count
+        self.labels['qr_scan'].set_label(
+            f"Scanned: {count} part{'s' if count != 1 else ''}"
+        )
         self._screen.show_popup_message(
-            f'<span size="30000" weight="bold">Scanned OK</span>\n\n<span size="20000">{GLib.markup_escape_text(qr_code)}</span>',
+            f'<span size="30000" weight="bold">Scanned OK ({count})</span>\n\n'
+            f'<span size="20000">{GLib.markup_escape_text(qr_code)}</span>\n\n'
+            f'<span size="16000">Scan next part or navigate away when done</span>',
             level=1,
         )
-        logging.info(f"[QR] Successfully assigned QR code: {qr_code}")
+        logging.info(f"[QR] Assigned QR code: {qr_code} (total: {count})")
+        # Re-enable scanning for next part
+        self.qr_scan_active = True
+        self.qr_scan_buffer = ""
 
     def _qr_scan_duplicate(self, qr_code, detail):
         self.labels['qr_scan'].set_label(f"QR: {qr_code} - DUPLICATE")
@@ -995,11 +1005,11 @@ class Panel(ScreenPanel):
         for entry in pending:
             try:
                 resp = requests.post(
-                    f"{FLEET_DAEMON_URL}/history/qr-scan",
+                    f"{FLEET_DAEMON_URL}/history/qr-link",
                     json=entry,
                     timeout=5,
                 )
-                if resp.status_code == 200:
+                if resp.status_code in (200, 201):
                     logging.info(f"[QR] Flushed pending QR: {entry['qr_code']}")
                 else:
                     logging.warning(f"[QR] Failed to flush QR {entry['qr_code']}: {resp.status_code} {resp.text}")
