@@ -231,6 +231,14 @@ class Panel(ScreenPanel):
             if "current_extruder" in self.labels:
                 n = self._printer.get_tool_number(self.current_extruder)
                 self.labels["current_extruder"].set_image(self._gtk.Image(f"extruder-{n}"))
+
+        if "toolhead" in data and any(k in data["toolhead"] for k in ("nozzle_type", "nozzle_life", "remaining_nozzle_life", "nozzle_size")):
+            th = data["toolhead"]
+            if "nozzle_type" in th:
+                self.shared_printer_config.nozzle_type = th["nozzle_type"]
+            if "nozzle_size" in th:
+                self.shared_printer_config.nozzle = th["nozzle_size"]
+            self.update_button_labels()
            
         for x in self._printer.get_filament_sensors():
             if x in data:
@@ -771,13 +779,297 @@ class Panel(ScreenPanel):
             button = Gtk.Button(label=f"{size}mm")
             button.get_style_context().add_class("color1")
             button.set_size_request(150, 200)
-            button.connect("clicked", self.set_nozzle_size, size, dialog)
+            button.connect("clicked", self.open_nozzle_type_selection, size, dialog)
             grid.attach(button, i % 2, i // 2, 1, 1)  # Arrange buttons in 3 columns
 
         # Add the grid to the dialog content area and show all
         content_area = dialog.get_content_area()
         content_area.add(grid)
         dialog.show_all()
+
+    def open_nozzle_type_selection(self, widget, nozzle_size, parent_dialog):
+        current_x, current_y = parent_dialog.get_position()
+        parent_dialog.destroy()
+
+        parent_window = widget.get_toplevel()
+        if not isinstance(parent_window, Gtk.Window):
+            parent_window = None
+
+        nozzle_types = ["DLC Hardened Steel", "Nickel Plated Copper", "Custom"]
+        prefills = {"DLC Hardened Steel": 12, "Nickel Plated Copper": 12}
+
+        dialog = ClickOutsideDialog(title="Select Nozzle Type",
+                                    transient_for=parent_window,
+                                    flags=Gtk.DialogFlags.MODAL)
+        dialog.set_default_size(600, 250)
+        dialog.move(current_x, current_y)
+
+        grid = Gtk.Grid()
+        grid.set_column_homogeneous(True)
+        grid.set_row_homogeneous(True)
+        grid.set_column_spacing(10)
+        grid.set_row_spacing(10)
+        grid.set_margin_start(10)
+        grid.set_margin_end(10)
+        grid.set_margin_top(10)
+        grid.set_margin_bottom(10)
+
+        for i, nozzle_type in enumerate(nozzle_types):
+            button = Gtk.Button(label=nozzle_type)
+            button.get_style_context().add_class("color1")
+            button.set_size_request(150, 220)
+            if nozzle_type == "Custom":
+                button.connect("clicked", self.open_custom_nozzle_type_dialog, nozzle_size, dialog)
+            else:
+                prefill = prefills[nozzle_type]
+                button.connect("clicked", self.open_nozzle_life_dialog, nozzle_size, nozzle_type, prefill, dialog)
+            grid.attach(button, i, 0, 1, 1)
+
+        content_area = dialog.get_content_area()
+        content_area.add(grid)
+        dialog.show_all()
+
+    def open_custom_nozzle_type_dialog(self, widget, nozzle_size, parent_dialog):
+        current_x, current_y = parent_dialog.get_position()
+        parent_dialog.destroy()
+
+        parent_window = widget.get_toplevel()
+        if not isinstance(parent_window, Gtk.Window):
+            parent_window = None
+
+        custom_dialog = ClickOutsideDialog(
+            title="Enter Custom Nozzle Type",
+            transient_for=parent_window,
+            flags=Gtk.DialogFlags.MODAL
+        )
+        custom_dialog.set_default_size(400, 400)
+        custom_dialog.move(current_x - 170, current_y - 70)
+        custom_dialog.connect("destroy", self._screen.remove_custom_keyboard)
+
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_margin_start(20)
+        vbox.set_margin_end(20)
+        vbox.set_margin_top(20)
+        vbox.set_margin_bottom(20)
+
+        entry = Gtk.Entry()
+        entry.set_placeholder_text("Enter custom nozzle type (max 20 chars)")
+        entry.set_max_length(20)
+        entry.connect("focus-in-event", lambda w, e: self._screen.show_custom_keyboard(entry))
+        entry.grab_focus()
+
+        vbox.pack_start(entry, True, True, 0)
+
+        keyboard = self._screen.show_custom_keyboard(entry)
+        if keyboard:
+            vbox.pack_start(keyboard, False, False, 10)
+
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+
+        confirm_button = Gtk.Button(label="Confirm")
+        confirm_button.get_style_context().add_class("color1")
+        confirm_button.set_size_request(150, 50)
+        confirm_button.connect("clicked", self.confirm_custom_nozzle_type, entry, custom_dialog, nozzle_size)
+        hbox.pack_start(confirm_button, True, True, 0)
+
+        cancel_button = Gtk.Button(label="Cancel")
+        cancel_button.get_style_context().add_class("color1")
+        cancel_button.set_size_request(150, 50)
+        cancel_button.connect("clicked", lambda w: custom_dialog.destroy())
+        hbox.pack_start(cancel_button, True, True, 0)
+
+        vbox.pack_start(hbox, False, False, 0)
+
+        content_area = custom_dialog.get_content_area()
+        content_area.add(vbox)
+        custom_dialog.show_all()
+
+    def confirm_custom_nozzle_type(self, widget, entry, dialog, nozzle_size):
+        custom_type = entry.get_text().strip()
+
+        if not custom_type:
+            self._screen.show_popup_message("Please enter a nozzle type name", level=3)
+            return
+
+        if len(custom_type) > 20:
+            self._screen.show_popup_message("Nozzle type name must be 20 characters or less", level=3)
+            return
+
+        dialog.destroy()
+        self.open_nozzle_life_dialog(widget, nozzle_size, custom_type, 0, None)
+
+    def open_nozzle_life_dialog(self, widget, nozzle_size, nozzle_type, prefill, parent_dialog):
+        if parent_dialog is not None:
+            current_x, current_y = parent_dialog.get_position()
+            parent_dialog.destroy()
+        else:
+            current_x, current_y = 0, 0
+
+        parent_window = widget.get_toplevel()
+        if not isinstance(parent_window, Gtk.Window):
+            parent_window = None
+
+        life_dialog = ClickOutsideDialog(
+            title=f"Enter Nozzle Life for {nozzle_type} in kg",
+            transient_for=parent_window,
+            flags=Gtk.DialogFlags.MODAL
+        )
+        life_dialog.set_default_size(500, 500)
+        if parent_dialog is not None:
+            life_dialog.move(current_x + 100, current_y)
+
+        self.active_nozzle_life_dialog = life_dialog
+        self.active_nozzle_size = nozzle_size
+        self.active_nozzle_type = nozzle_type
+
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_margin_start(20)
+        vbox.set_margin_end(20)
+        vbox.set_margin_top(20)
+        vbox.set_margin_bottom(20)
+
+        instruction_label = Gtk.Label()
+        instruction_label.set_markup(f'<span font="12">Enter nozzle life (in kg) for {nozzle_type}</span>')
+        vbox.pack_start(instruction_label, False, False, 10)
+
+        from ks_includes.widgets.weight_keypad import WeightKeypad
+        self.nozzle_life_keypad = WeightKeypad(
+            self._screen,
+            self.process_nozzle_life_entry,
+            self.hide_nozzle_life_dialog
+        )
+
+        if prefill:
+            self.nozzle_life_keypad.set_initial_value(prefill)
+            self.nozzle_life_preset_active = True
+            original_update_entry = self.nozzle_life_keypad.update_entry
+
+            def custom_life_update_entry(widget, action):
+                if hasattr(self, 'nozzle_life_preset_active') and self.nozzle_life_preset_active:
+                    if action == 'B':
+                        self.nozzle_life_keypad.labels['entry'].set_text("")
+                        self.nozzle_life_preset_active = False
+                    elif action not in ['E', 'C', 'CANCEL']:
+                        self.nozzle_life_keypad.labels['entry'].set_text("0." if action == '.' else action)
+                        self.nozzle_life_preset_active = False
+                    else:
+                        original_update_entry(widget, action)
+                else:
+                    original_update_entry(widget, action)
+
+            self.nozzle_life_keypad.update_entry = custom_life_update_entry
+
+            keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '.']
+            for key in keys:
+                button_id = f'button_{key}'
+                if button_id in self.nozzle_life_keypad.labels:
+                    self.nozzle_life_keypad.labels[button_id].disconnect_by_func(original_update_entry)
+                    self.nozzle_life_keypad.labels[button_id].connect('clicked', custom_life_update_entry, key)
+
+            self.nozzle_life_keypad.labels['entry'].disconnect_by_func(original_update_entry)
+            self.nozzle_life_keypad.labels['entry'].connect("activate", custom_life_update_entry, "E")
+
+            if 'backspace' in self.nozzle_life_keypad.labels:
+                self.nozzle_life_keypad.labels['backspace'].disconnect_by_func(original_update_entry)
+                self.nozzle_life_keypad.labels['backspace'].connect('clicked', custom_life_update_entry, 'B')
+
+        vbox.pack_start(self.nozzle_life_keypad, True, True, 10)
+
+        content_area = life_dialog.get_content_area()
+        content_area.add(vbox)
+        life_dialog.show_all()
+
+    def process_nozzle_life_entry(self, life_value):
+        nozzle_size = getattr(self, 'active_nozzle_size', None)
+        nozzle_type = getattr(self, 'active_nozzle_type', None)
+
+        if nozzle_size is None or nozzle_type is None:
+            self._screen.show_popup_message("Error: Nozzle configuration not found.", level=3)
+            return
+
+        try:
+            nozzle_life = float(life_value)
+            if nozzle_life <= 0:
+                raise ValueError("Life must be positive")
+        except (ValueError, TypeError):
+            self._screen.show_popup_message("Invalid nozzle life value", level=3)
+            return
+
+        if hasattr(self, 'active_nozzle_life_dialog'):
+            self.active_nozzle_life_dialog.destroy()
+            self.cleanup_nozzle_life_dialog()
+
+        self.finalize_nozzle_setup(nozzle_size, nozzle_type, nozzle_life)
+
+    def hide_nozzle_life_dialog(self, widget=None):
+        if hasattr(self, 'active_nozzle_life_dialog'):
+            self.active_nozzle_life_dialog.destroy()
+            self.cleanup_nozzle_life_dialog()
+
+    def cleanup_nozzle_life_dialog(self):
+        for attr in ['active_nozzle_life_dialog', 'active_nozzle_size', 'active_nozzle_type',
+                     'nozzle_life_keypad', 'nozzle_life_preset_active']:
+            if hasattr(self, attr):
+                delattr(self, attr)
+
+    def finalize_nozzle_setup(self, nozzle_size, nozzle_type, nozzle_life):
+        def handle_size_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(
+                    f"Failed to set nozzle size: {response['error']['message']}", level=3)
+            else:
+                self.shared_printer_config.nozzle = nozzle_size
+                self.update_button_labels()
+
+        self._screen._ws.send_method(
+            "server.database.post_item",
+            {"namespace": "HS3", "key": "nozzle_size", "value": nozzle_size},
+            handle_size_response
+        )
+
+        def handle_type_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(
+                    f"Failed to set nozzle type: {response['error']['message']}", level=3)
+            else:
+                self.shared_printer_config.nozzle_type = nozzle_type
+                self.update_button_labels()
+
+        self._screen._ws.send_method(
+            "server.database.post_item",
+            {"namespace": "HS3", "key": "nozzle_type", "value": nozzle_type},
+            handle_type_response
+        )
+
+        def handle_life_response(response, method, params, *args):
+            if response.get("error"):
+                self._screen.show_popup_message(
+                    f"Failed to set nozzle life: {response['error']['message']}", level=3)
+            else:
+                self._screen.show_popup_message(
+                    f"Nozzle set: {nozzle_size}mm {nozzle_type}, {int(nozzle_life)}kg life", level=1)
+                if hasattr(self._screen, 'base_panel'):
+                    self._screen.base_panel._update_nozzle_life_label(nozzle_life, nozzle_life)
+
+        self._screen._ws.send_method(
+            "server.database.post_item",
+            {"namespace": "HS3", "key": "nozzle_life", "value": nozzle_life},
+            handle_life_response
+        )
+
+        self._screen._ws.send_method(
+            "server.database.post_item",
+            {"namespace": "HS3", "key": "remaining_nozzle_life", "value": nozzle_life},
+            handle_life_response
+        )
+
+        try:
+            self._screen.apiclient.post_request(
+                "server/spool_tracker/status",
+                json={"reset_tripmeter_e": True}
+            )
+        except Exception as e:
+            logging.debug(f"Failed to reset tripmeter_e: {e}")
 
     def set_nozzle_size(self, widget, nozzle_size, dialog):
         # Close the dialog when a nozzle size is selected
@@ -838,7 +1130,8 @@ class Panel(ScreenPanel):
 
         # Create a text entry field for the custom filament name
         entry = Gtk.Entry()
-        entry.set_placeholder_text("Enter custom filament name")
+        entry.set_placeholder_text("Enter custom filament name (max 20 chars)")
+        entry.set_max_length(20)
 
         # Connect the entry to show the virtual keyboard when focused
         entry.connect("focus-in-event", lambda w, e: self._screen.show_custom_keyboard(entry))
@@ -882,9 +1175,13 @@ class Panel(ScreenPanel):
     def confirm_custom_filament(self, widget, entry, dialog, run_load_macro=False):
         # Get the custom filament name from the entry
         custom_filament = entry.get_text().strip()
-        
+
         if not custom_filament:
             self._screen.show_popup_message("Please enter a filament name", level=3)
+            return
+
+        if len(custom_filament) > 20:
+            self._screen.show_popup_message("Filament name must be 20 characters or less", level=3)
             return
 
         # Close the custom filament dialog
@@ -1214,42 +1511,59 @@ class Panel(ScreenPanel):
 
         # Create the nozzle label and replace the icon
         if self.shared_printer_config.nozzle == '':
-            nozzle_text = "No Nozzle"
+            nozzle_size_text = "No Nozzle"
         else:
-            nozzle_text = self.shared_printer_config.nozzle
+            nozzle_size_text = f"{self.shared_printer_config.nozzle}mm"
 
-        # Create a vertical box to hold the labels
         nozzle_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-        nozzle_vbox.set_vexpand(True)  # Ensure the vbox expands to the full height
-        nozzle_vbox.set_valign(Gtk.Align.CENTER)  # Center the box vertically
+        nozzle_vbox.set_vexpand(True)
+        nozzle_vbox.set_valign(Gtk.Align.CENTER)
 
-        # Create the nozzle type label
         nozzle_label = Gtk.Label()
-        nozzle_label.set_markup(f'<span font="18"><b>{nozzle_text}mm</b></span>')
+        nozzle_label.set_markup(f'<span font="18"><b>{nozzle_size_text}</b></span>')
         nozzle_label.set_justify(Gtk.Justification.CENTER)
-        nozzle_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
+        nozzle_label.set_valign(Gtk.Align.CENTER)
 
-        # Create the "Set Nozzle Size" label
-        set_nozzle_label = Gtk.Label(label="Set Nozzle Size")
-        set_nozzle_label.set_valign(Gtk.Align.CENTER)  # Center the label vertically
+        set_nozzle_label = Gtk.Label(label="Set Nozzle")
+        set_nozzle_label.set_valign(Gtk.Align.CENTER)
 
-        # Pack the labels into the vbox
         nozzle_vbox.pack_start(nozzle_label, True, True, 0)
         nozzle_vbox.pack_start(set_nozzle_label, True, True, 0)
 
-        # Check if the button already has a child widget
         if self.buttons['set_nozzle'].get_children():
-            # Remove the existing child widget (icon or any existing content)
             self.buttons['set_nozzle'].get_children()[0].destroy()
 
-        # Add the new vbox with labels
         self.buttons['set_nozzle'].add(nozzle_vbox)
-
-        # Reapply the "color3" style class to the button
         self.buttons['set_nozzle'].get_style_context().add_class("color3")
-
-        # Show the button with its new content
         self.buttons['set_nozzle'].show_all()
+
+        # Overlay nozzle_type text on top of the extruder button icon
+        nozzle_type_text = getattr(self.shared_printer_config, 'nozzle_type', '')
+        icon_size = self._gtk.img_scale * self._gtk.button_image_scale
+
+        for extruder in self._printer.get_tools():
+            if extruder not in self.labels:
+                continue
+            if self._printer.extrudercount == 1:
+                image_name = "extruder"
+            else:
+                n = self._printer.get_tool_number(extruder)
+                image_name = f"extruder-{n}"
+
+            extruder_image = self._gtk.Image(image_name, icon_size, icon_size)
+
+            if nozzle_type_text:
+                icon_vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+                icon_vbox.set_halign(Gtk.Align.CENTER)
+                type_label = Gtk.Label()
+                type_label.set_markup(f'<span font="9"><b>{nozzle_type_text}</b></span>')
+                type_label.set_halign(Gtk.Align.CENTER)
+                icon_vbox.pack_start(type_label, False, False, 0)
+                icon_vbox.pack_start(extruder_image, False, False, 0)
+                icon_vbox.show_all()
+                self.labels[extruder].set_image(icon_vbox)
+            else:
+                self.labels[extruder].set_image(extruder_image)
 
         self.refresh_title()
 
@@ -1264,6 +1578,7 @@ class Panel(ScreenPanel):
                 value = result.get("value", {})
                 self.shared_printer_config.filament = value.get("filament_type", "")  # Set the filament type
                 self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
+                self.shared_printer_config.nozzle_type = value.get("nozzle_type", "")  # Set the nozzle type
                 
                 # Update the icons based on the extracted values
                 self.update_button_labels()

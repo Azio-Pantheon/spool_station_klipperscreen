@@ -164,7 +164,16 @@ class BasePanel(ScreenPanel):
                         n += 1
                         break
 
+            # Nozzle life tracker
+            self.labels['nozzle_life'] = Gtk.Label(label="")
+            self.labels['nozzle_life_box'] = Gtk.Box()
+            nozzle_icon = self._gtk.Image("extruder-health", img_size, img_size)
+            self.labels['nozzle_life_box'].pack_start(nozzle_icon, False, False, 3)
+            self.labels['nozzle_life_box'].pack_start(self.labels['nozzle_life'], False, False, 0)
+            self.control['temp_box'].add(self.labels['nozzle_life_box'])
+
             self.control['temp_box'].show_all()
+            self.labels['nozzle_life_box'].hide()  # Hidden until data loads
         except Exception as e:
             logging.debug(f"Couldn't create heaters box: {e}")
 
@@ -187,6 +196,25 @@ class BasePanel(ScreenPanel):
             return self._gtk.Image("heater", img_size, img_size)
         else:
             return self._gtk.Image("heat-up", img_size, img_size)
+
+    def _update_nozzle_life_label(self, nozzle_life, remaining_life):
+        if 'nozzle_life' not in self.labels or 'nozzle_life_box' not in self.labels:
+            return
+        try:
+            life = float(nozzle_life) if nozzle_life else 0
+            remaining = float(remaining_life) if remaining_life else 0
+            if life > 0:
+                pct = (remaining / life) * 100
+                if pct < 0:
+                    self.labels['nozzle_life'].set_markup(f'<span foreground="red">{pct:.0f}%</span>')
+                else:
+                    self.labels['nozzle_life'].set_label(f"{pct:.0f}% Health")
+                self.labels['nozzle_life_box'].show_all()
+            else:
+                self.labels['nozzle_life_box'].hide()
+        except Exception as e:
+            logging.debug(f"Error updating nozzle life label: {e}")
+            self.labels['nozzle_life_box'].hide()
 
     def activate(self):
         if self.time_update is None:
@@ -283,6 +311,13 @@ class BasePanel(ScreenPanel):
             self.control['temp_box'].reorder_child(self.labels[f"{self.current_extruder}_box"], 0)
             self.control['temp_box'].show_all()
 
+        if 'toolhead' in data and any(k in data['toolhead'] for k in ('nozzle_life', 'remaining_nozzle_life')):
+            th = data['toolhead']
+            self._update_nozzle_life_label(
+                th.get('nozzle_life', self._printer.get_stat('toolhead', 'nozzle_life')),
+                th.get('remaining_nozzle_life', self._printer.get_stat('toolhead', 'remaining_nozzle_life'))
+            )
+
         return False
 
     def remove(self, widget):
@@ -337,26 +372,32 @@ class BasePanel(ScreenPanel):
                 value = result.get("value", {})
                 filament = value.get("filament_type", "")
                 nozzle = value.get("nozzle_size", "")
-                
+
                 # Cache config for lazy weight loading
                 self._cached_config = {'filament': filament, 'nozzle': nozzle}
-                
+
+                # Update nozzle life tracker
+                self._update_nozzle_life_label(
+                    value.get("nozzle_life", 0),
+                    value.get("remaining_nozzle_life", 0)
+                )
+
                 # Build title immediately without weight
                 self._build_final_title(title, filament, nozzle, None)
-                
+
                 # Schedule lazy weight loading (store ID to cancel if needed)
                 self._weight_timeout_id = GLib.timeout_add_seconds(2, self._lazy_load_weight)
-                
+
             except Exception as e:
                 logging.debug(f"Error processing config response: {e}")
                 self._set_title_fallback(title)
-        
+
         # Get config data quickly (this is fast)
         try:
             if self._screen._ws is None:
                 self._set_title_fallback(title)
                 return
-                
+
             self._screen._ws.send_method(
                 "server.database.get_item",
                 {"namespace": "HS3"},
@@ -375,16 +416,22 @@ class BasePanel(ScreenPanel):
                 value = result.get("value", {})
                 filament = value.get("filament_type", "")
                 nozzle = value.get("nozzle_size", "")
-                
+
                 # Cache config for lazy weight loading
                 self._cached_config = {'filament': filament, 'nozzle': nozzle}
-                
+
+                # Update nozzle life tracker
+                self._update_nozzle_life_label(
+                    value.get("nozzle_life", 0),
+                    value.get("remaining_nozzle_life", 0)
+                )
+
                 # Build title with existing weight info to prevent flashing
                 self._build_final_title(title, filament, nozzle, self._current_weight_info)
-                
+
                 # Still schedule weight update, but don't clear existing weight
                 self._weight_timeout_id = GLib.timeout_add_seconds(2, self._lazy_load_weight)
-                
+
             except Exception as e:
                 logging.debug(f"Error processing config response: {e}")
                 self._set_title_fallback(title)

@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" aria-label="Extruder health (heart) icon">
+  <title>extruder_health_heart</title>
+  <path fill="#839496" d="M7 32.418h50v18H7z"/>
+  <path fill="#93a1a1" d="M19.576 32.418h25v18h-25z"/>
+  <path d="M19.5 50.418h25l-8.337 10h-8.326z" fill="#586e75"/>
+  <path fill="#657b83" d="M16.076 22.418h32v10h-32z"/>
+  <rect x="9.576" y="12.418" width="45" height="10" rx="2" ry="2" fill="#586e75"/>
+  <path fill="#586e75" d="M9.576 4.418h45v10h-45z"/>
+  <g transform="translate(32 25) scale(2.3)" opacity="0.8">
+    <circle r="11" fill="#073642"/>
+    <circle r="11" fill="none" stroke="#586e75"/>
+    <path clip-rule="evenodd" d="M0-3.5c-1.35-1.573-3.604-2.059-5.295-.619s-1.93 3.848-.601 5.552c1.104 1.416 4.445 4.402 5.54 5.37.122.108.183.162.255.183a.35.35 0 0 0 .193 0c.071-.021.132-.075.255-.183 1.095-.968 4.437-3.954 5.54-5.37C7.216-.27 7.007-2.694 5.286-4.12S1.35-5.073 0-3.5" stroke="#859900" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <path fill="none" stroke="#fdf6e3" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M-7 0h3l1-3 2 6 2-3h6"/>
+  </g>
+</svg>
