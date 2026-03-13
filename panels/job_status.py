@@ -16,7 +16,6 @@ from ks_includes.KlippyGtk import find_widget
 
 import requests
 
-FLEET_DAEMON_URL = "http://pantheonfleet.local:8090"
 QR_PENDING_FILE = "/home/hs3/printer_data/backup/klipperscreen_qr_pending.json"
 
 
@@ -52,6 +51,10 @@ class Panel(ScreenPanel):
         self.qr_scan_active = False
         self.qr_scan_submitted = False
         self.qr_scanned_count = 0
+        self.fleet_daemon_url = (
+            self.ks_printer_cfg.get("fleet_daemon_url", "").strip('" ')
+            if self.ks_printer_cfg else ""
+        )
 
         data = ['pos_x', 'pos_y', 'pos_z', 'time_left', 'duration', 'slicer_time', 'file_time',
                 'filament_time', 'est_time', 'speed_factor', 'req_speed', 'max_accel', 'extrude_factor', 'zoffset',
@@ -813,6 +816,37 @@ class Panel(ScreenPanel):
     def start_qr_scan(self):
         if self.qr_scan_active:
             return
+        if not self.fleet_daemon_url:
+            logging.warning("[QR] fleet_daemon_url not configured, skipping QR scan")
+            self._screen.show_popup_message(
+                '<span size="30000" weight="bold">Fleet daemon not configured</span>\n\n'
+                '<span size="16000">Set fleet_daemon_url in KlipperScreen.conf</span>',
+                level=2,
+            )
+            return
+        # Check fleet daemon reachability before prompting for scan
+        threading.Thread(target=self._check_fleet_and_start_scan, daemon=True).start()
+
+    def _check_fleet_and_start_scan(self):
+        try:
+            requests.get(self.fleet_daemon_url, timeout=3)
+        except Exception as e:
+            logging.error(f"[QR] Fleet daemon unreachable: {e}")
+            GLib.idle_add(self._show_fleet_error)
+            return
+        GLib.idle_add(self._activate_qr_scan)
+
+    def _show_fleet_error(self):
+        self._screen.show_popup_message(
+            '<span size="30000" weight="bold">Fleet Server Unreachable</span>\n\n'
+            f'<span size="16000">{GLib.markup_escape_text(self.fleet_daemon_url)}</span>\n\n'
+            '<span size="16000">Check fleet daemon is running</span>',
+            level=2,
+        )
+
+    def _activate_qr_scan(self):
+        if self.qr_scan_active:
+            return
         self.qr_scan_active = True
         self.qr_scan_buffer = ""
         self.labels['qr_scan'].set_label(_("Scan QR Code..."))
@@ -900,7 +934,7 @@ class Panel(ScreenPanel):
 
         try:
             resp = requests.post(
-                f"{FLEET_DAEMON_URL}/history/qr-link",
+                f"{self.fleet_daemon_url}/history/qr-link",
                 json=payload,
                 timeout=5,
             )
@@ -987,7 +1021,7 @@ class Panel(ScreenPanel):
             logging.error(f"[QR] Failed to save pending QR: {e}")
 
     @staticmethod
-    def flush_pending_qr_codes():
+    def flush_pending_qr_codes(fleet_daemon_url):
         """Try to push all pending QR code entries to fleet daemon.
         Call this on KlipperScreen startup."""
         if not os.path.exists(QR_PENDING_FILE):
@@ -1005,7 +1039,7 @@ class Panel(ScreenPanel):
         for entry in pending:
             try:
                 resp = requests.post(
-                    f"{FLEET_DAEMON_URL}/history/qr-link",
+                    f"{fleet_daemon_url}/history/qr-link",
                     json=entry,
                     timeout=5,
                 )

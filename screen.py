@@ -987,7 +987,12 @@ class KlipperScreen(Gtk.Window):
         # Flush any pending QR code entries from previous sessions
         import threading
         from panels.job_status import Panel as JobStatusPanel
-        threading.Thread(target=JobStatusPanel.flush_pending_qr_codes, daemon=True).start()
+        ks_printer_cfg = self._config.get_printer_config(self.connected_printer)
+        fleet_url = ks_printer_cfg.get("fleet_daemon_url", "").strip('" ') if ks_printer_cfg else ""
+        if fleet_url:
+            threading.Thread(
+                target=JobStatusPanel.flush_pending_qr_codes, args=(fleet_url,), daemon=True
+            ).start()
 
         return result
 
