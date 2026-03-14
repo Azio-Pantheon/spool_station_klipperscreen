@@ -791,7 +791,7 @@ class Panel(ScreenPanel):
         density = filament.get("density", 0)
         diameter = filament.get("diameter", 1.75)
 
-        dialog = Gtk.Dialog(
+        dialog = ClickOutsideDialog(
             title="Confirm Spool",
             transient_for=self._screen,
             flags=Gtk.DialogFlags.MODAL,
