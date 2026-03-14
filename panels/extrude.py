@@ -1,10 +1,12 @@
 import logging
 import re
 import os
+import threading
 import gi
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Pango, Gdk  
+from gi.repository import Gtk, Pango, Gdk, GLib
+import requests
 from ks_includes.KlippyGcodes import KlippyGcodes
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.widgets.autogrid import AutoGrid
@@ -30,6 +32,15 @@ class Panel(ScreenPanel):
             "PA-GF (Natural)": {"id": 4, "default_weight": 3000},
             "PA-GF (Dark Grey)": {"id": 5, "default_weight": 3000}
         }
+
+        # Fleet daemon QR scan state
+        self.fleet_daemon_url = (
+            self.ks_printer_cfg.get("fleet_daemon_url", "").strip('" ')
+            if self.ks_printer_cfg else ""
+        )
+        self.qr_scan_active = False
+        self.qr_scan_buffer = ""
+        self._active_run_load_macro = False
 
         self.speeds = ['1', '2', '5', '25']
         self.distances = ['5', '10', '15', '25']
@@ -347,14 +358,22 @@ class Panel(ScreenPanel):
                     button.connect("clicked", self.set_filament_type_original, filament, dialog, run_load_macro)
             grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
 
-        # Add "Update Weight" button spanning the bottom row (only if spool_tracker available)
+        # Add bottom-row button (only if spool_tracker available)
         if self.has_spool_tracker:
-            weight_button = Gtk.Button(label="Update Weight Only")
-            weight_button.get_style_context().add_class("color3")
-            weight_button.set_size_request(150, 150)
-            weight_button.connect("clicked", self.open_weight_only_dialog, dialog)
             next_row = (len(filament_types) + 2) // 3  # Next row after filament buttons
-            grid.attach(weight_button, 0, next_row, 3, 1)  # Span all 3 columns
+            if self.fleet_daemon_url:
+                # QR scan replaces "Update Weight Only" — QR lookup provides the weight
+                qr_button = Gtk.Button(label="Scan Spool QR")
+                qr_button.get_style_context().add_class("color4")
+                qr_button.set_size_request(150, 150)
+                qr_button.connect("clicked", self._on_qr_scan_clicked, dialog, run_load_macro)
+                grid.attach(qr_button, 0, next_row, 3, 1)
+            else:
+                weight_button = Gtk.Button(label="Update Weight Only")
+                weight_button.get_style_context().add_class("color3")
+                weight_button.set_size_request(150, 150)
+                weight_button.connect("clicked", self.open_weight_only_dialog, dialog)
+                grid.attach(weight_button, 0, next_row, 3, 1)
 
         # Add the grid to the dialog content area and show all
         content_area = dialog.get_content_area()
@@ -662,7 +681,211 @@ class Panel(ScreenPanel):
                 self._screen._send_action(None, "printer.gcode.script",
                                         {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
 
-    def handle_spool_tracker_workflow(self, filament_type, weight, density=None, diameter=None):
+    # ── QR Spool Scan Methods ─────────────────────────────────────────
+
+    def _on_qr_scan_clicked(self, widget, dialog, run_load_macro):
+        """Start the QR scan workflow — close filament dialog and wait for barcode input."""
+        dialog.destroy()
+        self._active_run_load_macro = run_load_macro
+        self.qr_scan_active = True
+        self.qr_scan_buffer = ""
+        self._screen.show_popup_message(
+            '<span size="30000" weight="bold">Scan Spool QR Code</span>\n\n'
+            '<span size="16000">Scan barcode or press Escape to cancel</span>',
+            level=1,
+        )
+
+    def handle_key_press(self, event):
+        """Handle keyboard input from barcode scanner. Returns True if consumed."""
+        if not self.qr_scan_active:
+            return False
+        keyval = event.keyval
+        keyval_name = Gdk.keyval_name(keyval)
+
+        if keyval_name in ("Return", "KP_Enter"):
+            if self.qr_scan_buffer:
+                self._submit_spool_qr(self.qr_scan_buffer.strip())
+                self.qr_scan_buffer = ""
+            return True
+        elif keyval_name == "BackSpace":
+            self.qr_scan_buffer = self.qr_scan_buffer[:-1]
+            return True
+        elif keyval_name == "Escape":
+            self.qr_scan_active = False
+            self.qr_scan_buffer = ""
+            return False  # Let Escape propagate to go home
+        else:
+            char = chr(keyval) if 32 <= keyval < 127 else Gdk.keyval_to_unicode(keyval)
+            if isinstance(char, int):
+                char = chr(char) if char > 0 else ""
+            if char and char.isprintable():
+                self.qr_scan_buffer += char
+                return True
+        return False
+
+    def _submit_spool_qr(self, qr_code):
+        """Disable scan mode and look up the QR code from fleet_daemon in a background thread."""
+        self.qr_scan_active = False
+        self._screen.show_popup_message(
+            f'<span size="24000">Looking up: {GLib.markup_escape_text(qr_code)}</span>',
+            level=1,
+        )
+        threading.Thread(
+            target=self._lookup_spool_qr,
+            args=(qr_code,),
+            daemon=True,
+        ).start()
+
+    def _lookup_spool_qr(self, qr_code):
+        """Background thread: GET fleet_daemon spool lookup and marshal result to GTK thread."""
+        try:
+            resp = requests.get(
+                f"{self.fleet_daemon_url}/spool/lookup/{qr_code}",
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                GLib.idle_add(self._show_spool_confirmation, qr_code, data)
+            elif resp.status_code == 404:
+                GLib.idle_add(
+                    self._screen.show_popup_message,
+                    '<span size="24000" weight="bold">Spool Not Found</span>\n\n'
+                    f'<span size="16000">QR: {GLib.markup_escape_text(qr_code)}</span>\n\n'
+                    '<span size="16000">Use manual filament selection instead</span>',
+                    2,
+                )
+            else:
+                detail = resp.text[:200]
+                GLib.idle_add(
+                    self._screen.show_popup_message,
+                    f'<span size="24000" weight="bold">Lookup Error ({resp.status_code})</span>\n\n'
+                    f'<span size="16000">{GLib.markup_escape_text(detail)}</span>',
+                    3,
+                )
+        except requests.exceptions.ConnectionError:
+            GLib.idle_add(
+                self._screen.show_popup_message,
+                '<span size="24000" weight="bold">Connection Error</span>\n\n'
+                '<span size="16000">Cannot connect to fleet daemon</span>',
+                3,
+            )
+        except Exception as e:
+            GLib.idle_add(
+                self._screen.show_popup_message,
+                f'<span size="24000" weight="bold">Error</span>\n\n'
+                f'<span size="16000">{GLib.markup_escape_text(str(e))}</span>',
+                3,
+            )
+
+    def _show_spool_confirmation(self, qr_code, data):
+        """Show a confirmation dialog with spool details from fleet_daemon lookup."""
+        spool = data.get("spool", {})
+        filament = spool.get("filament", {})
+        vendor = filament.get("vendor") or {}
+
+        vendor_name = vendor.get("name", "Unknown")
+        filament_name = filament.get("name", "Unknown")
+        material = filament.get("material", "Unknown")
+        remaining_weight = spool.get("remaining_weight", 0)
+        color_hex = filament.get("color_hex", "")
+        density = filament.get("density", 0)
+        diameter = filament.get("diameter", 1.75)
+
+        dialog = Gtk.Dialog(
+            title="Confirm Spool",
+            transient_for=self._screen,
+            flags=Gtk.DialogFlags.MODAL,
+        )
+        dialog.set_default_size(500, 400)
+
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        vbox.set_margin_start(20)
+        vbox.set_margin_end(20)
+        vbox.set_margin_top(20)
+        vbox.set_margin_bottom(20)
+
+        info_lines = [
+            f"Vendor: {vendor_name}",
+            f"Filament: {filament_name}",
+            f"Material: {material}",
+            f"Remaining: {remaining_weight:.0f}g",
+        ]
+        if color_hex:
+            info_lines.append(f"Color: #{color_hex}")
+
+        for text in info_lines:
+            lbl = Gtk.Label(label=text)
+            lbl.set_halign(Gtk.Align.START)
+            lbl.modify_font(Pango.FontDescription("Sans 16"))
+            vbox.pack_start(lbl, False, False, 0)
+
+        btn_box = Gtk.Box(spacing=20)
+        btn_box.set_margin_top(20)
+
+        confirm_btn = Gtk.Button(label="Confirm")
+        confirm_btn.get_style_context().add_class("color1")
+        confirm_btn.set_size_request(200, 80)
+        confirm_btn.connect(
+            "clicked", self._confirm_spool_qr, dialog, qr_code,
+            material, remaining_weight, density, diameter,
+        )
+
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.get_style_context().add_class("color2")
+        cancel_btn.set_size_request(200, 80)
+        cancel_btn.connect("clicked", lambda w: dialog.destroy())
+
+        btn_box.pack_start(confirm_btn, True, True, 0)
+        btn_box.pack_start(cancel_btn, True, True, 0)
+        vbox.pack_end(btn_box, False, False, 0)
+
+        dialog.get_content_area().add(vbox)
+        dialog.show_all()
+
+    def _confirm_spool_qr(self, widget, dialog, qr_code, material, weight, density, diameter):
+        """Register the QR-scanned spool to moonraker's spool_tracker."""
+        dialog.destroy()
+
+        # Map material to moonraker filament type
+        # Known types map directly; PA-GF variants collapse to "PA-GF"
+        known_types = {"PA-CF", "PETG-CF", "PA-GF", "TPU"}
+        if material in known_types:
+            moonraker_filament = material
+        elif material and material.startswith("PA-GF"):
+            moonraker_filament = "PA-GF"
+        else:
+            # Unknown material — will go through custom filament registration
+            moonraker_filament = material
+
+        # Use existing workflow (handles custom filament registration + spool_tracker POST)
+        self.handle_spool_tracker_workflow(
+            moonraker_filament, weight, density, diameter, qr_code=qr_code,
+        )
+
+        # Update Moonraker DB with filament type
+        self._screen._ws.send_method(
+            "server.database.post_item",
+            {"namespace": "HS3", "key": "filament_type", "value": moonraker_filament},
+            lambda *args: None,
+        )
+        self.shared_printer_config.filament = moonraker_filament
+        self.update_button_labels()
+
+        # Run load macro if requested
+        if self._active_run_load_macro and self.load_filament:
+            self._screen._send_action(
+                None, "printer.gcode.script",
+                {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"},
+            )
+
+        self._screen.show_popup_message(
+            f"Spool registered: {moonraker_filament}, {weight:.0f}g\nQR: {qr_code}",
+            level=1,
+        )
+
+    # ── End QR Spool Scan Methods ────────────────────────────────────
+
+    def handle_spool_tracker_workflow(self, filament_type, weight, density=None, diameter=None, qr_code=None):
         """Set filament type and weight in spool_tracker, optionally register custom filament"""
         try:
             is_custom = filament_type not in self.spoolman_filament_mapping
@@ -693,13 +916,16 @@ class Panel(ScreenPanel):
 
                 logging.info(f"Custom filament '{filament_type}' registered successfully")
 
-            # Always set filament + weight
+            # Always set filament + weight (+ optional qr_code)
+            payload = {
+                "filament_type": filament_type,
+                "weight": weight,
+            }
+            if qr_code:
+                payload["qr_code"] = qr_code
             result = self._screen.apiclient.post_request(
                 "server/spool_tracker/filament",
-                json={
-                    "filament_type": filament_type,
-                    "weight": weight
-                }
+                json=payload,
             )
 
             if result and not result.get("error"):
