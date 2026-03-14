@@ -1,6 +1,7 @@
 import logging
 import re
 import os
+import socket
 import threading
 import gi
 
@@ -777,11 +778,31 @@ class Panel(ScreenPanel):
                 3,
             )
 
+    def _get_printer_hostname(self):
+        """Get this printer's hostname with .local suffix."""
+        hostname = socket.gethostname()
+        if not hostname.endswith('.local'):
+            hostname += '.local'
+        return hostname
+
     def _show_spool_confirmation(self, qr_code, data):
         """Show a confirmation dialog with spool details from fleet_daemon lookup."""
         spool = data.get("spool", {})
         filament = spool.get("filament", {})
         vendor = filament.get("vendor") or {}
+
+        # Check if spool is already loaded on another printer
+        loaded_on = spool.get("loaded_on_printer") or ""
+        my_hostname = self._get_printer_hostname()
+        if loaded_on and loaded_on != my_hostname:
+            self._screen.show_popup_message(
+                f'<span size="24000" weight="bold">Spool In Use</span>\n\n'
+                f'<span size="16000">This spool is currently loaded on:\n'
+                f'<b>{GLib.markup_escape_text(loaded_on)}</b>\n\n'
+                f'Unload the spool from that printer first.</span>',
+                level=3,
+            )
+            return
 
         vendor_name = vendor.get("name", "Unknown")
         filament_name = filament.get("name", "Unknown")
