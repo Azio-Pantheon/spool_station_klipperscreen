@@ -677,6 +677,13 @@ class Panel(ScreenPanel):
             # Handle spool_tracker workflow (much simpler than spoolman)
             self.handle_spool_tracker_workflow(moonraker_filament, weight)
 
+            # Notify fleet_daemon to unload any spool on this printer (manual change = no QR)
+            if self.fleet_daemon_url:
+                threading.Thread(
+                    target=self._notify_fleet_spool_unload,
+                    daemon=True,
+                ).start()
+
             # Run load macro if requested
             if run_load_macro:
                 self._screen._send_action(None, "printer.gcode.script",
@@ -892,6 +899,13 @@ class Panel(ScreenPanel):
         self.shared_printer_config.filament = moonraker_filament
         self.update_button_labels()
 
+        # Notify fleet_daemon directly so it updates loaded_on_printer immediately
+        threading.Thread(
+            target=self._notify_fleet_spool_load,
+            args=(qr_code,),
+            daemon=True,
+        ).start()
+
         # Run load macro if requested
         if self._active_run_load_macro and self.load_filament:
             self._screen._send_action(
@@ -903,6 +917,38 @@ class Panel(ScreenPanel):
             f"Spool registered: {moonraker_filament}, {weight:.0f}g\nQR: {qr_code}",
             level=1,
         )
+
+    def _notify_fleet_spool_load(self, qr_code):
+        """Notify fleet_daemon that a spool has been loaded on this printer."""
+        try:
+            hostname = self._get_printer_hostname()
+            resp = requests.post(
+                f"{self.fleet_daemon_url}/spool/load",
+                json={"qr_code": qr_code, "printer_hostname": hostname},
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                logging.info(f"Fleet daemon notified: spool {qr_code} loaded on {hostname}")
+            else:
+                logging.warning(f"Fleet daemon spool load notification failed: {resp.status_code} {resp.text[:200]}")
+        except Exception as e:
+            logging.warning(f"Fleet daemon spool load notification error: {e}")
+
+    def _notify_fleet_spool_unload(self):
+        """Notify fleet_daemon to unload any spool on this printer (manual filament change)."""
+        try:
+            hostname = self._get_printer_hostname()
+            resp = requests.post(
+                f"{self.fleet_daemon_url}/spool/unload",
+                json={"qr_code": "", "printer_hostname": hostname},
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                logging.info(f"Fleet daemon notified: spool unloaded from {hostname}")
+            else:
+                logging.warning(f"Fleet daemon spool unload notification failed: {resp.status_code}")
+        except Exception as e:
+            logging.warning(f"Fleet daemon spool unload notification error: {e}")
 
     # ── End QR Spool Scan Methods ────────────────────────────────────
 
