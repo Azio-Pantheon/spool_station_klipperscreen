@@ -932,28 +932,31 @@ class Panel(ScreenPanel):
             "qr_code": qr_code,
         }
 
-        try:
-            resp = requests.post(
-                f"{self.fleet_daemon_url}/history/qr-link",
-                json=payload,
-                timeout=5,
-            )
-            if resp.status_code in (200, 201):
-                GLib.idle_add(self._qr_scan_success, qr_code)
-            elif resp.status_code == 409:
-                detail = resp.json().get("detail", "Duplicate QR code")
-                GLib.idle_add(self._qr_scan_duplicate, qr_code, detail)
-            else:
-                detail = resp.json().get("detail", resp.text)
-                GLib.idle_add(self._qr_scan_error, qr_code, detail)
-                self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
-        except requests.exceptions.ConnectionError:
-            GLib.idle_add(self._qr_scan_error, qr_code,
-                          "Cannot connect to fleet daemon")
-            self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
-        except Exception as e:
-            GLib.idle_add(self._qr_scan_error, qr_code, str(e))
-            self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
+        url = f"{self.fleet_daemon_url}/history/qr-link"
+        last_err = None
+        for attempt in range(3):
+            try:
+                resp = requests.post(url, json=payload, timeout=10)
+                if resp.status_code in (200, 201):
+                    GLib.idle_add(self._qr_scan_success, qr_code)
+                    return
+                elif resp.status_code == 409:
+                    detail = resp.json().get("detail", "Duplicate QR code")
+                    GLib.idle_add(self._qr_scan_duplicate, qr_code, detail)
+                    return
+                else:
+                    detail = resp.json().get("detail", resp.text)
+                    GLib.idle_add(self._qr_scan_error, qr_code, detail)
+                    self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
+                    return
+            except requests.exceptions.ConnectionError:
+                last_err = "Cannot connect to fleet daemon"
+                break  # no point retrying if host is unreachable
+            except Exception as e:
+                last_err = str(e)
+                logging.warning(f"[QR] Attempt {attempt + 1}/3 failed: {e}")
+        GLib.idle_add(self._qr_scan_error, qr_code, last_err)
+        self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
 
     def _qr_scan_success(self, qr_code):
         self.qr_scanned_count += 1
@@ -1041,7 +1044,7 @@ class Panel(ScreenPanel):
                 resp = requests.post(
                     f"{fleet_daemon_url}/history/qr-link",
                     json=entry,
-                    timeout=5,
+                    timeout=10,
                 )
                 if resp.status_code in (200, 201):
                     logging.info(f"[QR] Flushed pending QR: {entry['qr_code']}")
