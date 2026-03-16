@@ -915,10 +915,15 @@ class Panel(ScreenPanel):
 
     def _send_qr_code_to_fleet(self, qr_code):
         """Send QR code to fleet daemon (runs in background thread)."""
+        import time as _time
+        t0 = _time.monotonic()
+
         printer_hostname = socket.gethostname()
         if not printer_hostname.endswith('.local'):
             printer_hostname += '.local'
         moonraker_job_id = self._get_last_moonraker_job_id()
+        t1 = _time.monotonic()
+        logging.info(f"[QR] Got job ID {moonraker_job_id} in {(t1-t0)*1000:.0f}ms")
 
         if not moonraker_job_id:
             GLib.idle_add(self._qr_scan_error, qr_code,
@@ -935,7 +940,10 @@ class Panel(ScreenPanel):
         url = f"{self.fleet_daemon_url}/history/qr-link"
         timed_out = False
         try:
+            t2 = _time.monotonic()
             resp = requests.post(url, json=payload, timeout=15)
+            t3 = _time.monotonic()
+            logging.info(f"[QR] POST qr-link responded {resp.status_code} in {(t3-t2)*1000:.0f}ms (total {(t3-t0)*1000:.0f}ms)")
             if resp.status_code in (200, 201):
                 GLib.idle_add(self._qr_scan_success, qr_code)
                 return
