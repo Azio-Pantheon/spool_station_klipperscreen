@@ -933,30 +933,53 @@ class Panel(ScreenPanel):
         }
 
         url = f"{self.fleet_daemon_url}/history/qr-link"
-        last_err = None
-        for attempt in range(3):
+        timed_out = False
+        try:
+            resp = requests.post(url, json=payload, timeout=15)
+            if resp.status_code in (200, 201):
+                GLib.idle_add(self._qr_scan_success, qr_code)
+                return
+            elif resp.status_code == 409:
+                detail = resp.json().get("detail", "Duplicate QR code")
+                GLib.idle_add(self._qr_scan_duplicate, qr_code, detail)
+                return
+            else:
+                detail = resp.json().get("detail", resp.text)
+                GLib.idle_add(self._qr_scan_error, qr_code, detail)
+                self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
+                return
+        except requests.exceptions.ReadTimeout:
+            # POST may have succeeded server-side despite timeout — verify before saving offline
+            logging.warning(f"[QR] POST timed out, checking if QR was created...")
+            timed_out = True
+        except requests.exceptions.ConnectionError:
+            GLib.idle_add(self._qr_scan_error, qr_code,
+                          "Cannot connect to fleet daemon")
+            self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
+            return
+        except Exception as e:
+            logging.warning(f"[QR] POST failed: {e}")
+            GLib.idle_add(self._qr_scan_error, qr_code, str(e))
+            self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
+            return
+
+        # After timeout: check if the QR was actually created
+        if timed_out:
             try:
-                resp = requests.post(url, json=payload, timeout=10)
-                if resp.status_code in (200, 201):
+                check = requests.get(
+                    f"{self.fleet_daemon_url}/history/qr/{qr_code}",
+                    timeout=10,
+                )
+                if check.status_code == 200:
+                    logging.info(f"[QR] POST timed out but QR was created successfully")
                     GLib.idle_add(self._qr_scan_success, qr_code)
                     return
-                elif resp.status_code == 409:
-                    detail = resp.json().get("detail", "Duplicate QR code")
-                    GLib.idle_add(self._qr_scan_duplicate, qr_code, detail)
-                    return
-                else:
-                    detail = resp.json().get("detail", resp.text)
-                    GLib.idle_add(self._qr_scan_error, qr_code, detail)
-                    self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
-                    return
-            except requests.exceptions.ConnectionError:
-                last_err = "Cannot connect to fleet daemon"
-                break  # no point retrying if host is unreachable
-            except Exception as e:
-                last_err = str(e)
-                logging.warning(f"[QR] Attempt {attempt + 1}/3 failed: {e}")
-        GLib.idle_add(self._qr_scan_error, qr_code, last_err)
-        self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
+            except Exception:
+                pass
+            # QR not found — save for later retry
+            GLib.idle_add(self._qr_scan_error, qr_code,
+                          "Request timed out — saved offline for retry")
+            self._save_pending_qr(printer_hostname, moonraker_job_id, qr_code)
 
     def _qr_scan_success(self, qr_code):
         self.qr_scanned_count += 1
