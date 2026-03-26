@@ -29,7 +29,7 @@ class Panel(ScreenPanel):
         self.spoolman_filament_mapping = {
             "PETG-CF": {"id": 1, "default_weight": 3000},
             "PA-CF": {"id": 2, "default_weight": 3000},
-            "TPU": {"id": 3, "default_weight": 2500},
+            "TPU": {"id": 3, "default_weight": 2000},
             "PA-GF (Natural)": {"id": 4, "default_weight": 3000},
             "PA-GF (Dark Grey)": {"id": 5, "default_weight": 3000}
         }
