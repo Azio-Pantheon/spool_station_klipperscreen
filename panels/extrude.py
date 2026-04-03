@@ -798,18 +798,15 @@ class Panel(ScreenPanel):
         filament = spool.get("filament", {})
         vendor = filament.get("vendor") or {}
 
-        # Check if spool is already loaded on another printer
+        # Check if spool is already loaded on another printer — warn but allow transfer
         loaded_on = spool.get("loaded_on_printer") or ""
         my_hostname = self._get_printer_hostname()
+        transfer_warning = ""
         if loaded_on and loaded_on != my_hostname:
-            self._screen.show_popup_message(
-                f'<span size="24000" weight="bold">Spool In Use</span>\n\n'
-                f'<span size="16000">This spool is currently loaded on:\n'
-                f'<b>{GLib.markup_escape_text(loaded_on)}</b>\n\n'
-                f'Unload the spool from that printer first.</span>',
-                level=3,
+            transfer_warning = f"  (transferring from {loaded_on})"
+            logging.warning(
+                f"Spool {qr_code} is loaded on {loaded_on}, transferring to {my_hostname}"
             )
-            return
 
         vendor_name = vendor.get("name", "Unknown")
         filament_name = filament.get("name", "Unknown")
@@ -840,6 +837,8 @@ class Panel(ScreenPanel):
         ]
         if color_hex:
             info_lines.append(f"Color: #{color_hex}")
+        if transfer_warning:
+            info_lines.append(f"⚠ Transferring from {loaded_on}")
 
         for text in info_lines:
             lbl = Gtk.Label(label=text)
