@@ -1,3 +1,4 @@
+import json
 import logging
 import re
 import os
@@ -11,6 +12,8 @@ import requests
 from ks_includes.KlippyGcodes import KlippyGcodes
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.widgets.autogrid import AutoGrid
+
+SPOOL_PENDING_FILE = "/home/hs3/printer_data/backup/klipperscreen_spool_pending.json"
 
 
 class Panel(ScreenPanel):
@@ -771,18 +774,22 @@ class Panel(ScreenPanel):
                     3,
                 )
         except requests.exceptions.ConnectionError:
+            hostname = self._get_printer_hostname()
+            self._save_pending_spool("load", qr_code, hostname)
             GLib.idle_add(
                 self._screen.show_popup_message,
-                '<span size="24000" weight="bold">Connection Error</span>\n\n'
-                '<span size="16000">Cannot connect to fleet daemon</span>',
-                3,
+                '<span size="24000" weight="bold">Fleet Offline – Spool Saved</span>\n\n'
+                '<span size="16000">Spool load will be synced when fleet is back</span>',
+                2,
             )
         except Exception as e:
+            hostname = self._get_printer_hostname()
+            self._save_pending_spool("load", qr_code, hostname)
             GLib.idle_add(
                 self._screen.show_popup_message,
-                f'<span size="24000" weight="bold">Error</span>\n\n'
+                f'<span size="24000" weight="bold">Fleet Offline – Spool Saved</span>\n\n'
                 f'<span size="16000">{GLib.markup_escape_text(str(e))}</span>',
-                3,
+                2,
             )
 
     def _get_printer_hostname(self):
@@ -919,8 +926,8 @@ class Panel(ScreenPanel):
 
     def _notify_fleet_spool_load(self, qr_code):
         """Notify fleet_daemon that a spool has been loaded on this printer."""
+        hostname = self._get_printer_hostname()
         try:
-            hostname = self._get_printer_hostname()
             resp = requests.post(
                 f"{self.fleet_daemon_url}/spool/load",
                 json={"qr_code": qr_code, "printer_hostname": hostname},
@@ -929,14 +936,16 @@ class Panel(ScreenPanel):
             if resp.status_code == 200:
                 logging.info(f"Fleet daemon notified: spool {qr_code} loaded on {hostname}")
             else:
-                logging.warning(f"Fleet daemon spool load notification failed: {resp.status_code} {resp.text[:200]}")
+                logging.warning(f"Fleet daemon spool load failed: {resp.status_code} {resp.text[:200]}")
+                self._save_pending_spool("load", qr_code, hostname)
         except Exception as e:
-            logging.warning(f"Fleet daemon spool load notification error: {e}")
+            logging.warning(f"Fleet daemon spool load error: {e}")
+            self._save_pending_spool("load", qr_code, hostname)
 
     def _notify_fleet_spool_unload(self):
         """Notify fleet_daemon to unload any spool on this printer (manual filament change)."""
+        hostname = self._get_printer_hostname()
         try:
-            hostname = self._get_printer_hostname()
             resp = requests.post(
                 f"{self.fleet_daemon_url}/spool/unload",
                 json={"qr_code": "", "printer_hostname": hostname},
@@ -945,9 +954,78 @@ class Panel(ScreenPanel):
             if resp.status_code == 200:
                 logging.info(f"Fleet daemon notified: spool unloaded from {hostname}")
             else:
-                logging.warning(f"Fleet daemon spool unload notification failed: {resp.status_code}")
+                logging.warning(f"Fleet daemon spool unload failed: {resp.status_code}")
+                self._save_pending_spool("unload", "", hostname)
         except Exception as e:
-            logging.warning(f"Fleet daemon spool unload notification error: {e}")
+            logging.warning(f"Fleet daemon spool unload error: {e}")
+            self._save_pending_spool("unload", "", hostname)
+
+    @staticmethod
+    def _save_pending_spool(action, qr_code, printer_hostname):
+        """Save a spool load/unload action to the pending queue file."""
+        pending = []
+        if os.path.exists(SPOOL_PENDING_FILE):
+            try:
+                with open(SPOOL_PENDING_FILE, "r") as f:
+                    pending = json.load(f)
+            except Exception:
+                pending = []
+        pending.append({
+            "action": action,
+            "qr_code": qr_code,
+            "printer_hostname": printer_hostname,
+        })
+        try:
+            with open(SPOOL_PENDING_FILE, "w") as f:
+                json.dump(pending, f)
+            logging.info(f"[Spool] Saved pending {action}: qr={qr_code} ({len(pending)} pending)")
+        except Exception as e:
+            logging.error(f"[Spool] Failed to save pending spool action: {e}")
+
+    @staticmethod
+    def flush_pending_spool_actions(fleet_daemon_url):
+        """Try to push all pending spool load/unload entries to fleet daemon.
+        Call this on KlipperScreen startup."""
+        if not os.path.exists(SPOOL_PENDING_FILE):
+            return
+        try:
+            with open(SPOOL_PENDING_FILE, "r") as f:
+                pending = json.load(f)
+        except Exception:
+            return
+        if not pending:
+            return
+
+        logging.info(f"[Spool] Flushing {len(pending)} pending spool entries")
+        remaining = []
+        for entry in pending:
+            action = entry.get("action", "load")
+            url = f"{fleet_daemon_url}/spool/{action}"
+            payload = {
+                "qr_code": entry.get("qr_code", ""),
+                "printer_hostname": entry.get("printer_hostname", ""),
+            }
+            try:
+                resp = requests.post(url, json=payload, timeout=10)
+                if resp.status_code == 200:
+                    logging.info(f"[Spool] Flushed pending {action}: qr={entry.get('qr_code')}")
+                else:
+                    logging.warning(f"[Spool] Failed to flush {action}: {resp.status_code} {resp.text[:200]}")
+                    remaining.append(entry)
+            except Exception as e:
+                logging.warning(f"[Spool] Failed to flush {action}: {e}")
+                remaining.append(entry)
+
+        if remaining:
+            with open(SPOOL_PENDING_FILE, "w") as f:
+                json.dump(remaining, f)
+            logging.info(f"[Spool] {len(remaining)} pending spool entries remain")
+        else:
+            try:
+                os.remove(SPOOL_PENDING_FILE)
+            except OSError:
+                pass
+            logging.info("[Spool] All pending spool entries flushed")
 
     # ── End QR Spool Scan Methods ────────────────────────────────────
 

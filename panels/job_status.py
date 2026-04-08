@@ -824,25 +824,8 @@ class Panel(ScreenPanel):
                 level=2,
             )
             return
-        # Check fleet daemon reachability before prompting for scan
-        threading.Thread(target=self._check_fleet_and_start_scan, daemon=True).start()
-
-    def _check_fleet_and_start_scan(self):
-        try:
-            requests.get(self.fleet_daemon_url, timeout=3)
-        except Exception as e:
-            logging.error(f"[QR] Fleet daemon unreachable: {e}")
-            GLib.idle_add(self._show_fleet_error)
-            return
-        GLib.idle_add(self._activate_qr_scan)
-
-    def _show_fleet_error(self):
-        self._screen.show_popup_message(
-            '<span size="30000" weight="bold">Fleet Server Unreachable</span>\n\n'
-            f'<span size="16000">{GLib.markup_escape_text(self.fleet_daemon_url)}</span>\n\n'
-            '<span size="16000">Check fleet daemon is running</span>',
-            level=2,
-        )
+        # Always allow scanning – if fleet is down the QR will be saved offline
+        self._activate_qr_scan()
 
     def _activate_qr_scan(self):
         if self.qr_scan_active:

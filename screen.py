@@ -986,14 +986,18 @@ class KlipperScreen(Gtk.Window):
         # Moonraker is ready, set a loop to init the printer
         result = self.init_klipper(state["result"])
 
-        # Flush any pending QR code entries from previous sessions
+        # Flush any pending QR code / spool entries from previous sessions
         import threading
         from panels.job_status import Panel as JobStatusPanel
+        from panels.extrude import Panel as ExtrudePanel
         ks_printer_cfg = self._config.get_printer_config(self.connected_printer)
         fleet_url = ks_printer_cfg.get("fleet_daemon_url", "").strip('" ') if ks_printer_cfg else ""
         if fleet_url:
             threading.Thread(
                 target=JobStatusPanel.flush_pending_qr_codes, args=(fleet_url,), daemon=True
+            ).start()
+            threading.Thread(
+                target=ExtrudePanel.flush_pending_spool_actions, args=(fleet_url,), daemon=True
             ).start()
 
         return result
