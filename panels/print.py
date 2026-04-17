@@ -3,6 +3,8 @@ import os
 import gi
 import yaml
 import re
+import requests
+import socket
 from io import StringIO
 
 
@@ -10,7 +12,7 @@ import subprocess
 import threading
 
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk, Pango, GdkPixbuf
+from gi.repository import Gtk, GLib, Pango, GdkPixbuf
 from datetime import datetime
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
@@ -51,6 +53,19 @@ class Panel(ScreenPanel):
 
         self.shared_printer_config = shared_printer_config
 
+        # Fleet integration
+        ks_printer_cfg = self._config.get_printer_config(self._screen.connected_printer)
+        self.fleet_daemon_url = (
+            ks_printer_cfg.get("fleet_daemon_url", "").strip('" ')
+            if ks_printer_cfg else ""
+        )
+        self.fleet_files = []  # cached fleet file list
+        self._fleet_downloading = False
+        self._fleet_download_filename = ""
+        hostname = socket.gethostname().lower()
+        if not hostname.endswith('.local'):
+            hostname += '.local'
+        self._fleet_hostname = hostname
 
         n = 0
         for name, val in self.sort_items.items():
@@ -956,10 +971,18 @@ class Panel(ScreenPanel):
         self.set_loading(True)
         if not result.get("result") or not isinstance(result["result"], dict):
             logging.info(result)
+            self.set_loading(False)
             return
-        items = [self.create_item(item) for item in [*result["result"]["dirs"], *result["result"]["files"]]]
+        local_files = result["result"].get("files", [])
+        local_filenames = {f.get("filename", "") for f in local_files}
+        items = [self.create_item(item) for item in [*result["result"]["dirs"], *local_files]]
         for item in filter(None, items):
             self.flowbox.add(item)
+
+        # If browsing fleet_gcodes, inject remote fleet files
+        if self._is_fleet_dir() and self.fleet_daemon_url:
+            self._inject_fleet_remote_files(local_filenames)
+
         self.set_sort()
         self.set_loading(False)
         logging.info(f"Loaded in {(datetime.now() - start).total_seconds():.3f} seconds")
@@ -1009,7 +1032,293 @@ class Panel(ScreenPanel):
         self.set_loading(True)
         for child in self.flowbox.get_children():
             self.flowbox.remove(child)
+        # Refresh fleet file cache when entering fleet directory
+        if self._is_fleet_dir() and self.fleet_daemon_url:
+            threading.Thread(target=self._fetch_fleet_files_bg, daemon=True).start()
         self._screen._ws.klippy.get_dir_info(self.load_files, self.cur_directory)
+
+    # ------------------------------------------------------------------
+    # Fleet GCode Integration
+    # ------------------------------------------------------------------
+
+    def _is_fleet_dir(self):
+        """Check if currently browsing a fleet_gcodes directory."""
+        return (self.cur_directory == 'gcodes/fleet_gcodes'
+                or self.cur_directory.startswith('gcodes/fleet_gcodes/'))
+
+    def _fleet_subpath(self):
+        """Get the relative subpath within fleet_gcodes."""
+        if self.cur_directory == 'gcodes/fleet_gcodes':
+            return ""
+        return self.cur_directory.replace('gcodes/fleet_gcodes/', '', 1)
+
+    def _fetch_fleet_files_bg(self):
+        """Background thread: fetch fleet file list from fleet_daemon."""
+        try:
+            resp = requests.get(
+                f"{self.fleet_daemon_url}/gcodes/fleet-files",
+                timeout=10
+            )
+            if resp.status_code == 200:
+                self.fleet_files = resp.json().get("files", [])
+                logging.info(f"[Fleet] Fetched {len(self.fleet_files)} fleet files")
+            else:
+                logging.warning(f"[Fleet] Failed to fetch files: HTTP {resp.status_code}")
+        except requests.exceptions.ConnectionError:
+            logging.warning("[Fleet] Cannot connect to fleet_daemon")
+            GLib.idle_add(
+                self._screen.show_popup_message,
+                "Cannot connect to fleet server", 2
+            )
+        except Exception as e:
+            logging.error(f"[Fleet] Error fetching files: {e}")
+
+    def _inject_fleet_remote_files(self, local_filenames):
+        """Add fleet remote files (not yet downloaded) to the file list."""
+        subpath = self._fleet_subpath()
+        for f in self.fleet_files:
+            fname = f.get("filename", "")
+            # Filter to current subdirectory
+            if subpath:
+                if not fname.startswith(subpath + '/'):
+                    continue
+                remainder = fname[len(subpath) + 1:]
+            else:
+                remainder = fname
+            # Only direct children (no nested subdirs)
+            if '/' in remainder:
+                continue
+            # Skip if already available locally
+            if remainder in local_filenames:
+                continue
+            # Create a fleet remote item
+            fbchild = self._create_fleet_item(remainder, fname, f.get("size", 0))
+            if fbchild:
+                self.flowbox.add(fbchild)
+
+    def _create_fleet_item(self, display_name, fleet_filename, size):
+        """Create a FlowBox child for a fleet remote file with cloud icon."""
+        basename = os.path.splitext(display_name)[0]
+        fbchild = PrintListItem()
+        fbchild.set_name(basename.casefold())
+        fbchild.set_path(f"__fleet__:{fleet_filename}")
+        fbchild.set_size(size)
+        fbchild.set_date(0)
+
+        if self.list_mode:
+            itemname = Gtk.Label(hexpand=True, halign=Gtk.Align.START,
+                                ellipsize=Pango.EllipsizeMode.END)
+            itemname.get_style_context().add_class("print-filename")
+            itemname.set_markup(f"<big><b>☁ {basename}</b></big>")
+            info = Gtk.Label(hexpand=True, halign=Gtk.Align.START)
+            info.get_style_context().add_class("print-info")
+            size_str = self._human_size(size)
+            info.set_markup(f"<small>Fleet · {size_str}</small>")
+
+            icon = Gtk.Button()
+            icon.connect("clicked", self._show_fleet_download_dialog, fleet_filename, display_name, size)
+            image_args = (None, icon, self.thumbsize, False, "network")
+
+            action = self._gtk.Button("network", style="color3")
+            action.connect("clicked", self._show_fleet_download_dialog, fleet_filename, display_name, size)
+            action.set_hexpand(False)
+            action.set_vexpand(False)
+            action.set_halign(Gtk.Align.END)
+
+            row = Gtk.Grid(hexpand=True, vexpand=False, valign=Gtk.Align.CENTER)
+            row.get_style_context().add_class("frame-item")
+            row.attach(icon, 0, 0, 1, 2)
+            row.attach(itemname, 1, 0, 3, 1)
+            row.attach(info, 1, 1, 1, 1)
+            row.attach(action, 4, 0, 1, 2)
+            fbchild.add(row)
+        else:
+            icon = self._gtk.Button(label=f"☁ {basename}")
+            icon.connect("clicked", self._show_fleet_download_dialog, fleet_filename, display_name, size)
+            image_args = (None, icon, self.thumbsize, False, "network")
+            fbchild.add(icon)
+
+        self.image_load(*image_args)
+        return fbchild
+
+    @staticmethod
+    def _human_size(size):
+        for unit in ('B', 'KB', 'MB', 'GB'):
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} TB"
+
+    def _show_fleet_download_dialog(self, widget, fleet_filename, display_name, size):
+        """Show dialog with Cancel / Download / Download & Print."""
+        if self._fleet_downloading:
+            self._screen.show_popup_message(
+                f"Download already in progress:\n{self._fleet_download_filename}", 2
+            )
+            return
+
+        size_str = self._human_size(size)
+        buttons = [
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": "dialog-error"},
+            {"name": "Download", "response": Gtk.ResponseType.APPLY, "style": "dialog-info"},
+            {"name": "Download & Print", "response": Gtk.ResponseType.OK},
+        ]
+        label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
+        label.set_markup(
+            f'<b>{display_name}</b>\n\n'
+            f'<span size="small">Size: {size_str}\n'
+            f'Source: Fleet Server</span>\n\n'
+            f'This file is on the fleet server.\n'
+            f'Download it to start printing.'
+        )
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        box.add(label)
+        self._gtk.Dialog(
+            f"☁ Fleet File", buttons, box,
+            self._fleet_download_dialog_response, fleet_filename
+        )
+
+    def _fleet_download_dialog_response(self, dialog, response_id, fleet_filename):
+        self._gtk.remove_dialog(dialog)
+        if response_id == Gtk.ResponseType.OK:
+            self._fleet_start_download(fleet_filename, start_print=True)
+        elif response_id == Gtk.ResponseType.APPLY:
+            self._fleet_start_download(fleet_filename, start_print=False)
+
+    def _fleet_start_download(self, fleet_filename, start_print=False):
+        """Kick off a fleet download in a background thread."""
+        self._fleet_downloading = True
+        self._fleet_download_filename = fleet_filename
+        action = "Download & Print" if start_print else "Download"
+        logging.info(f"[Fleet] {action}: {fleet_filename}")
+        self._screen.show_popup_message(
+            f"☁ Downloading from fleet...\n{fleet_filename.split('/')[-1]}", 1
+        )
+        threading.Thread(
+            target=self._fleet_download_worker,
+            args=(fleet_filename, start_print),
+            daemon=True
+        ).start()
+
+    def _fleet_download_worker(self, fleet_filename, start_print):
+        """Background thread: request download from fleet_daemon, poll for completion."""
+        url = f"{self.fleet_daemon_url}/gcodes/download"
+        body = {
+            "filename": fleet_filename,
+            "printer_hostname": self._fleet_hostname,
+        }
+        try:
+            resp = requests.post(url, json=body, timeout=15)
+            if resp.status_code in (200, 201):
+                logging.info(f"[Fleet] Download queued: {fleet_filename}")
+                GLib.idle_add(
+                    self._screen.show_popup_message,
+                    f"☁ Download queued\n{fleet_filename.split('/')[-1]}", 1
+                )
+                # Poll for completion
+                self._fleet_poll_download(fleet_filename, start_print)
+            elif resp.status_code == 409:
+                logging.info(f"[Fleet] Download already queued: {fleet_filename}")
+                GLib.idle_add(
+                    self._screen.show_popup_message,
+                    "Download already queued for this file", 2
+                )
+            else:
+                error = resp.text[:200]
+                logging.error(f"[Fleet] Download request failed: {error}")
+                GLib.idle_add(
+                    self._screen.show_popup_message,
+                    f"Fleet download failed:\n{error}", 3
+                )
+        except requests.exceptions.ConnectionError:
+            logging.error("[Fleet] Cannot connect to fleet_daemon for download")
+            GLib.idle_add(
+                self._screen.show_popup_message,
+                "Cannot connect to fleet server", 3
+            )
+        except Exception as e:
+            logging.error(f"[Fleet] Download error: {e}")
+            GLib.idle_add(
+                self._screen.show_popup_message,
+                f"Fleet download error:\n{str(e)[:100]}", 3
+            )
+        finally:
+            self._fleet_downloading = False
+            self._fleet_download_filename = ""
+
+    def _fleet_poll_download(self, fleet_filename, start_print, timeout=600):
+        """Poll fleet_daemon download queue until file is delivered."""
+        import time
+        elapsed = 0
+        poll_interval = 3
+        while elapsed < timeout:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            try:
+                resp = requests.get(
+                    f"{self.fleet_daemon_url}/gcodes/download/queue?include_history=true",
+                    timeout=10
+                )
+                if resp.status_code != 200:
+                    continue
+                queue = resp.json().get("queue", [])
+                # Find our download
+                job = None
+                for entry in queue:
+                    if (entry.get("filename") == fleet_filename
+                            and entry.get("printer_hostname") == self._fleet_hostname):
+                        job = entry
+                        break
+                if job is None:
+                    continue
+                status = job.get("status")
+                if status == "completed":
+                    logging.info(f"[Fleet] Download complete: {fleet_filename}")
+                    if start_print:
+                        print_path = f"fleet_gcodes/{fleet_filename}"
+                        logging.info(f"[Fleet] Starting print: {print_path}")
+                        GLib.idle_add(self._fleet_start_print_after_download, print_path)
+                        GLib.idle_add(
+                            self._screen.show_popup_message,
+                            f"☁ Print starting\n{fleet_filename.split('/')[-1]}", 1
+                        )
+                    else:
+                        GLib.idle_add(
+                            self._screen.show_popup_message,
+                            f"☁ Downloaded\n{fleet_filename.split('/')[-1]}", 1
+                        )
+                        GLib.idle_add(self._refresh_files)
+                    return
+                elif status == "failed":
+                    error = job.get("error_message", "Unknown error")
+                    logging.error(f"[Fleet] Download failed: {error}")
+                    GLib.idle_add(
+                        self._screen.show_popup_message,
+                        f"Fleet download failed:\n{error[:100]}", 3
+                    )
+                    return
+                elif status == "cancelled":
+                    logging.info(f"[Fleet] Download cancelled: {fleet_filename}")
+                    GLib.idle_add(
+                        self._screen.show_popup_message,
+                        "Download cancelled", 2
+                    )
+                    return
+                # pending or downloading — keep waiting
+            except Exception as e:
+                logging.warning(f"[Fleet] Poll error: {e}")
+
+        # Timeout
+        logging.error(f"[Fleet] Download timed out after {timeout}s: {fleet_filename}")
+        GLib.idle_add(
+            self._screen.show_popup_message,
+            f"Fleet download timed out\n({timeout}s)", 3
+        )
+
+    def _fleet_start_print_after_download(self, print_path):
+        """Start print via Moonraker (called on main thread via GLib.idle_add)."""
+        logging.info(f"[Fleet] Sending print_start: {print_path}")
+        self._screen._ws.klippy.print_start(print_path)
 
     def set_loading(self, loading):
         self.loading = loading
