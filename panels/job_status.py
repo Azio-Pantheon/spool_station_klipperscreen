@@ -107,6 +107,13 @@ class Panel(ScreenPanel):
             self.labels[label].set_halign(Gtk.Align.START)
             self.labels[label].set_ellipsize(Pango.EllipsizeMode.END)
 
+        self.labels['file'].set_ellipsize(Pango.EllipsizeMode.NONE)
+        file_scroller = Gtk.ScrolledWindow(hexpand=True, vexpand=False)
+        file_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER)
+        file_scroller.set_propagate_natural_height(True)
+        file_scroller.add(self.labels['file'])
+        self.labels['file_scroller'] = file_scroller
+
         self.labels['qr_scan'] = Gtk.Label()
         self.labels['qr_scan'].set_halign(Gtk.Align.START)
         self.labels['qr_scan'].set_ellipsize(Pango.EllipsizeMode.END)
@@ -114,7 +121,7 @@ class Panel(ScreenPanel):
         self.labels['qr_scan'].set_no_show_all(True)
 
         fi_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        fi_box.add(self.labels['file'])
+        fi_box.add(self.labels['file_scroller'])
         fi_box.add(self.labels['status'])
         fi_box.add(self.labels['lcdmessage'])
         fi_box.add(self.labels['qr_scan'])
@@ -1080,6 +1087,10 @@ class Panel(ScreenPanel):
                 pass
             logging.info("[QR] All pending QR entries flushed")
 
+    SCROLL_TICK_MS = 50
+    SCROLL_PIXELS_PER_TICK = 1.5
+    SCROLL_PAUSE_MS = 1500
+
     def update_filename(self, filename):
         if not filename:
             return
@@ -1088,44 +1099,60 @@ class Panel(ScreenPanel):
         self.labels["file"].set_label(display_name)
         self.filename_label = {
             "complete": display_name,
-            "position": 0,
-            "end_reached": False,
+            "scroll_px": 0.0,
+            "phase": "start_pause",
+            "phase_ticks": 0,
         }
+        scroller = self.labels.get('file_scroller')
+        if scroller is not None:
+            scroller.get_hadjustment().set_value(0)
         if self.animation_timeout is None:
-            self.animation_timeout = GLib.timeout_add_seconds(1, self.animate_label)
+            self.animation_timeout = GLib.timeout_add(self.SCROLL_TICK_MS, self.animate_label)
         self.update_file_metadata()
-
-    def _filename_fits(self, text):
-        label = self.labels['file']
-        alloc = label.get_allocated_width()
-        if alloc <= 0:
-            return True
-        layout = label.create_pango_layout(text)
-        text_width, _ = layout.get_pixel_size()
-        return text_width <= alloc
 
     def animate_label(self):
         if self.filename_label is None:
             return True
-        complete = self.filename_label['complete']
-        if self._filename_fits(complete):
-            if self.labels['file'].get_label() != complete:
-                self.labels['file'].set_label(complete)
-            self.filename_label['position'] = 0
-            self.filename_label['end_reached'] = False
+        scroller = self.labels.get('file_scroller')
+        if scroller is None:
             return True
-        if self.filename_label['end_reached']:
-            self.filename_label['position'] = 0
-            self.filename_label['end_reached'] = False
-            self.labels['file'].set_label(complete)
+        hadj = scroller.get_hadjustment()
+        page = hadj.get_page_size()
+        upper = hadj.get_upper()
+        overflow = upper - page
+        if page <= 0 or overflow <= 0:
+            if hadj.get_value() != 0:
+                hadj.set_value(0)
+            self.filename_label['scroll_px'] = 0.0
+            self.filename_label['phase'] = 'start_pause'
+            self.filename_label['phase_ticks'] = 0
             return True
-        pos = self.filename_label['position']
-        suffix = complete[pos:]
-        self.labels['file'].set_label(suffix)
-        if self._filename_fits(suffix):
-            self.filename_label['end_reached'] = True
-        else:
-            self.filename_label['position'] = pos + 1
+
+        pause_ticks = max(1, self.SCROLL_PAUSE_MS // self.SCROLL_TICK_MS)
+        phase = self.filename_label['phase']
+        if phase == 'start_pause':
+            self.filename_label['phase_ticks'] += 1
+            if self.filename_label['phase_ticks'] >= pause_ticks:
+                self.filename_label['phase'] = 'scrolling'
+                self.filename_label['phase_ticks'] = 0
+            return True
+        if phase == 'scrolling':
+            new_px = self.filename_label['scroll_px'] + self.SCROLL_PIXELS_PER_TICK
+            if new_px >= overflow:
+                new_px = overflow
+                self.filename_label['phase'] = 'end_pause'
+                self.filename_label['phase_ticks'] = 0
+            self.filename_label['scroll_px'] = new_px
+            hadj.set_value(new_px)
+            return True
+        if phase == 'end_pause':
+            self.filename_label['phase_ticks'] += 1
+            if self.filename_label['phase_ticks'] >= pause_ticks:
+                self.filename_label['scroll_px'] = 0.0
+                hadj.set_value(0)
+                self.filename_label['phase'] = 'start_pause'
+                self.filename_label['phase_ticks'] = 0
+            return True
         return True
 
     def update_file_metadata(self):
