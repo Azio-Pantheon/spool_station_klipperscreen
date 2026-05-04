@@ -109,8 +109,9 @@ class Panel(ScreenPanel):
 
         self.labels['file'].set_ellipsize(Pango.EllipsizeMode.NONE)
         file_scroller = Gtk.ScrolledWindow(hexpand=True, vexpand=False)
-        file_scroller.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.NEVER)
+        file_scroller.set_policy(Gtk.PolicyType.EXTERNAL, Gtk.PolicyType.NEVER)
         file_scroller.set_propagate_natural_height(True)
+        file_scroller.set_min_content_width(0)
         file_scroller.add(self.labels['file'])
         self.labels['file_scroller'] = file_scroller
 
