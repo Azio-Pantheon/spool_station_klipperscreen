@@ -958,12 +958,24 @@ class Panel(ScreenPanel):
                 info += f':<b> {datetime.fromtimestamp(item["modified"]):%Y/%m/%d %H:%M}</b>\n'
             else:
                 info += f':<b> {datetime.fromtimestamp(item["modified"]):%Y/%m/%d %I:%M %p}</b>\n'
-        if "size" in item:
-            info += _("Size") + f': <b>{self.format_size(item["size"])}</b>\n'
         if 'filename' in item:
             fileinfo = self._screen.files.get_file_info(path)
-            if "estimated_time" in fileinfo:
-                info += _("Print Time") + f': <b>{self.format_time(fileinfo["estimated_time"])}</b>'
+            filament_type = fileinfo.get("filament_type") or "-"
+            nozzle = fileinfo.get("nozzle_diameter")
+            try:
+                nozzle_str = f"{float(nozzle):.2f} mm" if nozzle is not None else "-"
+            except (TypeError, ValueError):
+                nozzle_str = "-"
+            info += (_("Filament") + f': <b>{filament_type}</b>   '
+                     + _("Nozzle") + f': <b>{nozzle_str}</b>\n')
+            time_str = self.format_time(fileinfo["estimated_time"]) if "estimated_time" in fileinfo else "-"
+            weight = fileinfo.get("filament_weight_total")
+            try:
+                weight_str = f"{float(weight):.0f} g" if weight is not None else "-"
+            except (TypeError, ValueError):
+                weight_str = "-"
+            info += (_("Print Time") + f': <b>{time_str}</b>   '
+                     + _("Material") + f': <b>{weight_str}</b>')
         return info
 
     def load_files(self, result, method, params):
