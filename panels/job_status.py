@@ -1084,26 +1084,48 @@ class Panel(ScreenPanel):
         if not filename:
             return
         self.filename = filename
-        self.labels["file"].set_label(os.path.splitext(self.filename)[0])
+        display_name = os.path.splitext(self.filename)[0]
+        self.labels["file"].set_label(display_name)
         self.filename_label = {
-            "complete": self.labels['file'].get_label(),
-            "current": self.labels['file'].get_label(),
+            "complete": display_name,
             "position": 0,
-            "limit": (self._screen.width * 37 / 480) // (self._gtk.font_size / 11),
-            "length": len(self.labels['file'].get_label())
+            "end_reached": False,
         }
-        if self.animation_timeout is None and (self.filename_label['length'] - self.filename_label['limit']) > 0:
+        if self.animation_timeout is None:
             self.animation_timeout = GLib.timeout_add_seconds(1, self.animate_label)
         self.update_file_metadata()
 
+    def _filename_fits(self, text):
+        label = self.labels['file']
+        alloc = label.get_allocated_width()
+        if alloc <= 0:
+            return True
+        layout = label.create_pango_layout(text)
+        text_width, _ = layout.get_pixel_size()
+        return text_width <= alloc
+
     def animate_label(self):
-        pos = self.filename_label['position']
-        if pos > (self.filename_label['length'] - self.filename_label['limit']):
+        if self.filename_label is None:
+            return True
+        complete = self.filename_label['complete']
+        if self._filename_fits(complete):
+            if self.labels['file'].get_label() != complete:
+                self.labels['file'].set_label(complete)
             self.filename_label['position'] = 0
-            self.labels['file'].set_label(self.filename_label['complete'])
+            self.filename_label['end_reached'] = False
+            return True
+        if self.filename_label['end_reached']:
+            self.filename_label['position'] = 0
+            self.filename_label['end_reached'] = False
+            self.labels['file'].set_label(complete)
+            return True
+        pos = self.filename_label['position']
+        suffix = complete[pos:]
+        self.labels['file'].set_label(suffix)
+        if self._filename_fits(suffix):
+            self.filename_label['end_reached'] = True
         else:
-            self.labels['file'].set_label(self.filename_label['current'][pos:self.filename_label['length']])
-            self.filename_label['position'] += 1
+            self.filename_label['position'] = pos + 1
         return True
 
     def update_file_metadata(self):
