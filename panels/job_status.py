@@ -937,10 +937,12 @@ class Panel(ScreenPanel):
             logging.info(f"[QR] POST qr-link responded {resp.status_code} in {(t3-t2)*1000:.0f}ms (total {(t3-t0)*1000:.0f}ms)")
             if resp.status_code in (200, 201):
                 GLib.idle_add(self._qr_scan_success, qr_code)
+                self.flush_pending_qr_codes(self.fleet_daemon_url)
                 return
             elif resp.status_code == 409:
                 detail = resp.json().get("detail", "Duplicate QR code")
                 GLib.idle_add(self._qr_scan_duplicate, qr_code, detail)
+                self.flush_pending_qr_codes(self.fleet_daemon_url)
                 return
             else:
                 detail = resp.json().get("detail", resp.text)
@@ -972,6 +974,7 @@ class Panel(ScreenPanel):
                 if check.status_code == 200:
                     logging.info(f"[QR] POST timed out but QR was created successfully")
                     GLib.idle_add(self._qr_scan_success, qr_code)
+                    self.flush_pending_qr_codes(self.fleet_daemon_url)
                     return
             except Exception:
                 pass
