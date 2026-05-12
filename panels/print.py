@@ -1132,15 +1132,43 @@ class Panel(ScreenPanel):
             )
             return
 
-        # Look up the daemon-reported entry to pull config_yml. The fleet list
-        # is cached per panel refresh; missing entries mean a stale view.
+        # Look up the daemon-reported entry to pull cached metadata. The fleet
+        # list is cached per panel refresh; missing entries mean a stale view.
         config_yml = None
+        fleet_filament_type = None
+        fleet_nozzle_diameter = None
         for f in self.fleet_files:
             if f.get("filename") == fleet_filename:
                 config_yml = f.get("config_yml")
+                fleet_filament_type = f.get("filament_type")
+                fleet_nozzle_diameter = f.get("nozzle_diameter")
                 break
 
         warnings_list = check_config(config_yml, self._machine_config)
+
+        # Live filament-type check — mirrors confirm_compatible_print at
+        # panels/print.py:657-661 so fleet files surface the same warnings.
+        if self.shared_printer_config.filament is None:
+            warnings_list.append("Warning! Filament type is not set on this printer.")
+        elif fleet_filament_type is not None and fleet_filament_type != self.shared_printer_config.filament:
+            warnings_list.append(
+                f"Warning! Filament type mismatch: expected {fleet_filament_type},\n\t but the printer filament is set to {self.shared_printer_config.filament}"
+            )
+
+        # Live nozzle-diameter check — mirrors confirm_compatible_print:663-673.
+        try:
+            printer_nozzle = float(self.shared_printer_config.nozzle)
+            if fleet_nozzle_diameter is not None and fleet_nozzle_diameter != printer_nozzle:
+                warnings_list.append(
+                    f"Warning! Nozzle diameter mismatch: expected {fleet_nozzle_diameter} mm,\n\t but the printer nozzle size is set to {self.shared_printer_config.nozzle} mm"
+                )
+        except (ValueError, TypeError):
+            nozzle_val = self.shared_printer_config.nozzle
+            if nozzle_val:
+                warnings_list.append(f"Warning! Nozzle size is invalid: '{nozzle_val}'")
+            else:
+                warnings_list.append("Warning! Nozzle size is not set on this printer.")
+
         warning_strings = [s for s in warnings_list if s.startswith("Warning!")]
         caution_strings = [s for s in warnings_list if s.startswith("Caution!")]
 
