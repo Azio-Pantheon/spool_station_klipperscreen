@@ -17,6 +17,9 @@ from datetime import datetime
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
 from ks_includes.widgets.flowboxchild_extended import PrintListItem
+from ks_includes.config_verifier import check_config
+
+FEATURES_FILE_PATH = "/home/hs3/hs3-data/config/features.yml"
 
 
 def format_label(widget):
@@ -52,6 +55,9 @@ class Panel(ScreenPanel):
         self.headerbox = Gtk.Box(hexpand=True, vexpand=False)
 
         self.shared_printer_config = shared_printer_config
+
+        self._machine_config = None
+        self._load_machine_config()
 
         # Fleet integration
         ks_printer_cfg = self._config.get_printer_config(self._screen.connected_printer)
@@ -470,7 +476,7 @@ class Panel(ScreenPanel):
         weight_status, required_weight, remaining_weight = self.check_filament_weight(filename)
         
         # if printer config doesnt exist, then skip all config checks
-        if isinstance(self.file_metadata, dict) and self.file_metadata.get('enable_config_verifier', True):
+        if isinstance(self.file_metadata, dict) and self._machine_config is not None:
             #Load the yml config from gcode
             label_text = ""
             label_class = ""
@@ -590,70 +596,12 @@ class Panel(ScreenPanel):
                     dialog.get_style_context().add_class('confirmPrintDialog')
                     return
                 else:
-                    if ('config_verifier' not in self.file_metadata):
-                        label_text = Gtk.Label(label=f"<b><span size='20480'>Caution: {cautionGenericText}</span></b>")  
-                        label_text.get_style_context().add_class('compatibilityMessage-caution')
-                        label_text.set_use_markup(True)
-                        label_text.set_xalign(0.0)
-
-                        warning_label = Gtk.Label(label=f"Gcode_yml format is invalid. Please try update PantheonSlicer profiles or check gcode content")
-                        warning_label.set_use_markup(True)
-                        warning_label.set_xalign(0.0)
-                        
-                        buttons = [
-                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
-                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
-                        ]
-
-                        grid = Gtk.Grid()
-                        grid.set_column_homogeneous(True)
-                        
-                        # Add weight warning banner at the top
-                        current_row = 0
-                        if weight_status in ['warning', 'caution']:
-                            weight_banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-                            
-                            # Main banner
-                            weight_main_label = Gtk.Label()
-                            weight_main_label.set_markup('<b><span size="20480">Warning: Filament is Low</span></b>')
-                            weight_main_label.get_style_context().add_class('compatibilityMessage-warning')
-                            weight_main_label.set_use_markup(True)
-                            weight_main_label.set_xalign(0.0)
-                            
-                            # Detail text
-                            weight_detail_label = Gtk.Label()
-                            if weight_status == 'warning':
-                                weight_detail_label.set_markup(f'Warning! Filament required ({required_weight}g) is higher than the remaining weight ({remaining_weight:.1f}g)')
-                            else:  # caution
-                                weight_detail_label.set_markup(f'Caution, Filament required ({required_weight}g) is close to the remaining weight ({remaining_weight:.1f}g), filament may runout midprint')
-                            weight_detail_label.set_use_markup(True)
-                            weight_detail_label.set_xalign(0.0)
-                            
-                            weight_banner_box.add(weight_main_label)
-                            weight_banner_box.add(weight_detail_label)
-                            weight_banner_box.set_margin_bottom(10)
-                            grid.attach(weight_banner_box, 0, current_row, 1, 1)
-                            current_row += 1
-                        
-                        label_text.set_margin_bottom(10)
-                        grid.attach(label_text, 0, current_row, 1, 1)
-                        grid.attach(warning_label, 0, current_row + 1, 1, 1)
-
-                        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                        box.add(grid)
-
-                        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
-                        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
-                        if pixbuf is not None:
-                            image = Gtk.Image.new_from_pixbuf(pixbuf)
-                            box.add(image)
-
-
-                        dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
-                        dialog.get_style_context().add_class('confirmPrintDialog')
-                        return    
+                    # Live comparison against the printer's features.yml.
+                    config_verifier = check_config(
+                        self.file_metadata.get('config_yml'),
+                        self._machine_config,
+                    )
                     # Handle filament type and nozzle size check
-                    config_verifier = self.file_metadata['config_verifier'].copy()
                     if self.shared_printer_config.filament is None:
                         config_verifier.append("Warning! Filament type is not set on this printer.")
                     elif self.file_metadata['filament_type'] != self.shared_printer_config.filament:
@@ -1039,8 +987,21 @@ class Panel(ScreenPanel):
                 data['item']["path"] = data['item']["path"][7:]
             self.add_item_from_callback(action, data)
 
+    def _load_machine_config(self):
+        try:
+            with open(FEATURES_FILE_PATH, 'r') as f:
+                self._machine_config = yaml.safe_load(f)
+            logging.info(f"[ConfigVerifier] Loaded {FEATURES_FILE_PATH}")
+        except FileNotFoundError:
+            self._machine_config = None
+            logging.info(f"[ConfigVerifier] {FEATURES_FILE_PATH} not present; config verification disabled")
+        except yaml.YAMLError:
+            self._machine_config = None
+            logging.exception(f"[ConfigVerifier] Failed to parse {FEATURES_FILE_PATH}")
+
     def _refresh_files(self, *args):
         logging.info("Refreshing")
+        self._load_machine_config()
         self.set_loading(True)
         for child in self.flowbox.get_children():
             self.flowbox.remove(child)
