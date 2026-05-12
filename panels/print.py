@@ -1123,12 +1123,26 @@ class Panel(ScreenPanel):
         return f"{size:.1f} TB"
 
     def _show_fleet_download_dialog(self, widget, fleet_filename, display_name, size):
-        """Show dialog with Cancel / Download / Download & Print."""
+        """Show dialog with Cancel / Download / Download & Print.
+        Includes live config-mismatch warnings using the file's embedded YAML
+        block (carried in the fleet daemon's /gcodes/fleet-files response)."""
         if self._fleet_downloading:
             self._screen.show_popup_message(
                 f"Download already in progress:\n{self._fleet_download_filename}", 2
             )
             return
+
+        # Look up the daemon-reported entry to pull config_yml. The fleet list
+        # is cached per panel refresh; missing entries mean a stale view.
+        config_yml = None
+        for f in self.fleet_files:
+            if f.get("filename") == fleet_filename:
+                config_yml = f.get("config_yml")
+                break
+
+        warnings_list = check_config(config_yml, self._machine_config)
+        warning_strings = [s for s in warnings_list if s.startswith("Warning!")]
+        caution_strings = [s for s in warnings_list if s.startswith("Caution!")]
 
         size_str = self._human_size(size)
         buttons = [
@@ -1136,6 +1150,46 @@ class Panel(ScreenPanel):
             {"name": "Download", "response": Gtk.ResponseType.APPLY, "style": "dialog-info"},
             {"name": "Download & Print", "response": Gtk.ResponseType.OK},
         ]
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        if warning_strings or caution_strings:
+            grid = Gtk.Grid()
+            grid.set_column_homogeneous(True)
+            current_row = 0
+            if warning_strings:
+                header = Gtk.Label(label='<b><span size="20480">Warning: Running this file may damage your machine</span></b>')
+                header.get_style_context().add_class('compatibilityMessage-warning')
+                header.set_use_markup(True)
+                header.set_xalign(0.0)
+                header.set_margin_bottom(5)
+                grid.attach(header, 0, current_row, 1, 1)
+                current_row += 1
+                for entry in warning_strings:
+                    detail = Gtk.Label(label=entry)
+                    detail.set_xalign(0.0)
+                    detail.set_line_wrap(True)
+                    detail.set_margin_bottom(5)
+                    grid.attach(detail, 0, current_row, 1, 1)
+                    current_row += 1
+            if caution_strings:
+                header = Gtk.Label(label='<b><span size="20480">Caution: Print quality may be degraded</span></b>')
+                header.get_style_context().add_class('compatibilityMessage-caution')
+                header.set_use_markup(True)
+                header.set_xalign(0.0)
+                header.set_margin_bottom(5)
+                grid.attach(header, 0, current_row, 1, 1)
+                current_row += 1
+                for entry in caution_strings:
+                    detail = Gtk.Label(label=entry)
+                    detail.set_xalign(0.0)
+                    detail.set_line_wrap(True)
+                    detail.set_margin_bottom(5)
+                    grid.attach(detail, 0, current_row, 1, 1)
+                    current_row += 1
+            grid.set_margin_bottom(10)
+            box.add(grid)
+
         label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
         label.set_markup(
             f'<b>{display_name}</b>\n\n'
@@ -1144,12 +1198,14 @@ class Panel(ScreenPanel):
             f'This file is on the fleet server.\n'
             f'Download it to start printing.'
         )
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.add(label)
-        self._gtk.Dialog(
+
+        dialog = self._gtk.Dialog(
             f"☁ Fleet File", buttons, box,
             self._fleet_download_dialog_response, fleet_filename
         )
+        if warning_strings or caution_strings:
+            dialog.get_style_context().add_class('confirmPrintDialog')
 
     def _fleet_download_dialog_response(self, dialog, response_id, fleet_filename):
         self._gtk.remove_dialog(dialog)
