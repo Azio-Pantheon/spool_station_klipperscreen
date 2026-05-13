@@ -86,7 +86,7 @@ class Panel(ScreenPanel):
 
         self.refresh = self._gtk.Button("refresh", style=f"color{n % 4 + 1}", scale=self.bts)
         self.refresh.get_style_context().add_class("buttons_slim")
-        self.refresh.connect('clicked', self._refresh_files)
+        self.refresh.connect('clicked', self._manual_refresh)
         n += 1
         self.headerbox.add(self.refresh)
 
@@ -195,7 +195,15 @@ class Panel(ScreenPanel):
             rename.set_image(self._gtk.Image("files", self.list_button_size, self.list_button_size))
             itemname = Gtk.Label(hexpand=True, halign=Gtk.Align.START, ellipsize=Pango.EllipsizeMode.END)
             itemname.get_style_context().add_class("print-filename")
-            itemname.set_markup(f"<big><b>{basename}</b></big>")
+            # Escape because basename may legitimately contain <, >, &.
+            itemname.set_markup(f"<big><b>{GLib.markup_escape_text(basename)}</b></big>")
+            # Force ellipsize to trigger: tell Pango a reasonable max
+            # width in characters. Without this hint Pango may decide it
+            # has "enough" room and the label silently clips at the cell
+            # edge instead of showing "...".
+            itemname.set_max_width_chars(int(self._screen.width / max(self._gtk.font_size, 12) * 0.85))
+            # Full name on long-press; works when gtk-touchscreen-mode is on.
+            itemname.set_tooltip_text(name)
             icon = Gtk.Button()
             row = Gtk.Grid(hexpand=True, vexpand=False, valign=Gtk.Align.CENTER)
             row.get_style_context().add_class("frame-item")
@@ -237,6 +245,17 @@ class Panel(ScreenPanel):
             fbchild.add(row)
         else:  # Thumbnail view
             icon = self._gtk.Button(label=basename)
+            icon.set_tooltip_text(name)
+            # The button's inner label already has wrap=True, lines=2,
+            # ellipsize=END (set by _gtk.Button → format_label). For the
+            # ellipsis to actually appear we have to tell Pango the
+            # approximate max width — otherwise it can lay out one line
+            # wider than the cell and the text clips with no indicator.
+            inner_label = find_widget(icon, Gtk.Label)
+            if inner_label is not None:
+                columns = 3 if self._screen.vertical_mode else 4
+                cell_w = self._screen.width / columns
+                inner_label.set_max_width_chars(max(8, int(cell_w / max(self._gtk.font_size, 12) * 0.85)))
             if 'filename' in item:
                 if path.startswith('flash_drive'):
                     icon.connect("clicked", self.confirm_move_gcode, path)
@@ -999,9 +1018,15 @@ class Panel(ScreenPanel):
             self._machine_config = None
             logging.exception(f"[ConfigVerifier] Failed to parse {FEATURES_FILE_PATH}")
 
+    def _manual_refresh(self, *args):
+        # User-initiated refresh — also re-read features.yml in case it
+        # changed since the panel was first opened. Directory navigation
+        # and view-mode toggles do NOT trigger a reload to keep nav snappy.
+        self._load_machine_config()
+        self._refresh_files(*args)
+
     def _refresh_files(self, *args):
         logging.info("Refreshing")
-        self._load_machine_config()
         self.set_loading(True)
         for child in self.flowbox.get_children():
             self.flowbox.remove(child)
@@ -1082,7 +1107,9 @@ class Panel(ScreenPanel):
             itemname = Gtk.Label(hexpand=True, halign=Gtk.Align.START,
                                 ellipsize=Pango.EllipsizeMode.END)
             itemname.get_style_context().add_class("print-filename")
-            itemname.set_markup(f"<big><b>☁ {basename}</b></big>")
+            itemname.set_markup(f"<big><b>☁ {GLib.markup_escape_text(basename)}</b></big>")
+            itemname.set_max_width_chars(int(self._screen.width / max(self._gtk.font_size, 12) * 0.85))
+            itemname.set_tooltip_text(display_name)
             info = Gtk.Label(hexpand=True, halign=Gtk.Align.START)
             info.get_style_context().add_class("print-info")
             size_str = self._human_size(size)
@@ -1107,6 +1134,12 @@ class Panel(ScreenPanel):
             fbchild.add(row)
         else:
             icon = self._gtk.Button(label=f"☁ {basename}")
+            icon.set_tooltip_text(display_name)
+            inner_label = find_widget(icon, Gtk.Label)
+            if inner_label is not None:
+                columns = 3 if self._screen.vertical_mode else 4
+                cell_w = self._screen.width / columns
+                inner_label.set_max_width_chars(max(8, int(cell_w / max(self._gtk.font_size, 12) * 0.85)))
             icon.connect("clicked", self._show_fleet_download_dialog, fleet_filename, display_name, size)
             image_args = (None, icon, self.thumbsize, False, "network")
             fbchild.add(icon)
