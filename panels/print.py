@@ -1170,10 +1170,12 @@ class Panel(ScreenPanel):
             return
 
         size_str = self._human_size(size)
+        # Order matches confirm_compatible_print's [Print, Cancel] convention:
+        # primary action first, destructive/cancel last.
         buttons = [
-            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": "dialog-error"},
-            {"name": "Download", "response": Gtk.ResponseType.APPLY, "style": "dialog-info"},
             {"name": "Download & Print", "response": Gtk.ResponseType.OK},
+            {"name": "Download", "response": Gtk.ResponseType.APPLY, "style": "dialog-info"},
+            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": "dialog-error"},
         ]
         label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
         label.set_markup(
