@@ -178,7 +178,10 @@ class Panel(ScreenPanel):
         else:
             logging.error(f"Unknown item {item}")
             return
-        basename = os.path.splitext(name)[0]
+        # Folders can legitimately have dots in their names (e.g. "Compo SC-1.2"),
+        # so only strip the extension on files. os.path.splitext would otherwise
+        # turn "Compo SC-1.2" into "Compo SC-1" and treat ".2" as an extension.
+        basename = name if 'dirname' in item else os.path.splitext(name)[0]
         fbchild.set_path(path)
         fbchild.set_name(basename.casefold())
         if self.list_mode:
