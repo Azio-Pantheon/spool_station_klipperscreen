@@ -17,6 +17,9 @@ from datetime import datetime
 from ks_includes.screen_panel import ScreenPanel
 from ks_includes.KlippyGtk import find_widget
 from ks_includes.widgets.flowboxchild_extended import PrintListItem
+from ks_includes.config_verifier import check_config
+
+FEATURES_FILE_PATH = "/home/hs3/hs3-data/config/features.yml"
 
 
 def format_label(widget):
@@ -53,6 +56,9 @@ class Panel(ScreenPanel):
 
         self.shared_printer_config = shared_printer_config
 
+        self._machine_config = None
+        self._load_machine_config()
+
         # Fleet integration
         ks_printer_cfg = self._config.get_printer_config(self._screen.connected_printer)
         self.fleet_daemon_url = (
@@ -80,7 +86,7 @@ class Panel(ScreenPanel):
 
         self.refresh = self._gtk.Button("refresh", style=f"color{n % 4 + 1}", scale=self.bts)
         self.refresh.get_style_context().add_class("buttons_slim")
-        self.refresh.connect('clicked', self._refresh_files)
+        self.refresh.connect('clicked', self._manual_refresh)
         n += 1
         self.headerbox.add(self.refresh)
 
@@ -172,7 +178,10 @@ class Panel(ScreenPanel):
         else:
             logging.error(f"Unknown item {item}")
             return
-        basename = os.path.splitext(name)[0]
+        # Folders can legitimately have dots in their names (e.g. "Compo SC-1.2"),
+        # so only strip the extension on files. os.path.splitext would otherwise
+        # turn "Compo SC-1.2" into "Compo SC-1" and treat ".2" as an extension.
+        basename = name if 'dirname' in item else os.path.splitext(name)[0]
         fbchild.set_path(path)
         fbchild.set_name(basename.casefold())
         if self.list_mode:
@@ -189,7 +198,15 @@ class Panel(ScreenPanel):
             rename.set_image(self._gtk.Image("files", self.list_button_size, self.list_button_size))
             itemname = Gtk.Label(hexpand=True, halign=Gtk.Align.START, ellipsize=Pango.EllipsizeMode.END)
             itemname.get_style_context().add_class("print-filename")
-            itemname.set_markup(f"<big><b>{basename}</b></big>")
+            # Escape because basename may legitimately contain <, >, &.
+            itemname.set_markup(f"<big><b>{GLib.markup_escape_text(basename)}</b></big>")
+            # Force ellipsize to trigger: tell Pango a reasonable max
+            # width in characters. Without this hint Pango may decide it
+            # has "enough" room and the label silently clips at the cell
+            # edge instead of showing "...".
+            itemname.set_max_width_chars(int(self._screen.width / max(self._gtk.font_size, 12) * 0.85))
+            # Full name on long-press; works when gtk-touchscreen-mode is on.
+            itemname.set_tooltip_text(name)
             icon = Gtk.Button()
             row = Gtk.Grid(hexpand=True, vexpand=False, valign=Gtk.Align.CENTER)
             row.get_style_context().add_class("frame-item")
@@ -231,6 +248,17 @@ class Panel(ScreenPanel):
             fbchild.add(row)
         else:  # Thumbnail view
             icon = self._gtk.Button(label=basename)
+            icon.set_tooltip_text(name)
+            # The button's inner label already has wrap=True, lines=2,
+            # ellipsize=END (set by _gtk.Button → format_label). For the
+            # ellipsis to actually appear we have to tell Pango the
+            # approximate max width — otherwise it can lay out one line
+            # wider than the cell and the text clips with no indicator.
+            inner_label = find_widget(icon, Gtk.Label)
+            if inner_label is not None:
+                columns = 3 if self._screen.vertical_mode else 4
+                cell_w = self._screen.width / columns
+                inner_label.set_max_width_chars(max(8, int(cell_w / max(self._gtk.font_size, 12) * 0.85)))
             if 'filename' in item:
                 if path.startswith('flash_drive'):
                     icon.connect("clicked", self.confirm_move_gcode, path)
@@ -470,7 +498,7 @@ class Panel(ScreenPanel):
         weight_status, required_weight, remaining_weight = self.check_filament_weight(filename)
         
         # if printer config doesnt exist, then skip all config checks
-        if isinstance(self.file_metadata, dict) and self.file_metadata.get('enable_config_verifier', True):
+        if isinstance(self.file_metadata, dict) and self._machine_config is not None:
             #Load the yml config from gcode
             label_text = ""
             label_class = ""
@@ -590,70 +618,12 @@ class Panel(ScreenPanel):
                     dialog.get_style_context().add_class('confirmPrintDialog')
                     return
                 else:
-                    if ('config_verifier' not in self.file_metadata):
-                        label_text = Gtk.Label(label=f"<b><span size='20480'>Caution: {cautionGenericText}</span></b>")  
-                        label_text.get_style_context().add_class('compatibilityMessage-caution')
-                        label_text.set_use_markup(True)
-                        label_text.set_xalign(0.0)
-
-                        warning_label = Gtk.Label(label=f"Gcode_yml format is invalid. Please try update PantheonSlicer profiles or check gcode content")
-                        warning_label.set_use_markup(True)
-                        warning_label.set_xalign(0.0)
-                        
-                        buttons = [
-                            {"name": _("Print"), "response": Gtk.ResponseType.OK},
-                            {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
-                        ]
-
-                        grid = Gtk.Grid()
-                        grid.set_column_homogeneous(True)
-                        
-                        # Add weight warning banner at the top
-                        current_row = 0
-                        if weight_status in ['warning', 'caution']:
-                            weight_banner_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=5)
-                            
-                            # Main banner
-                            weight_main_label = Gtk.Label()
-                            weight_main_label.set_markup('<b><span size="20480">Warning: Filament is Low</span></b>')
-                            weight_main_label.get_style_context().add_class('compatibilityMessage-warning')
-                            weight_main_label.set_use_markup(True)
-                            weight_main_label.set_xalign(0.0)
-                            
-                            # Detail text
-                            weight_detail_label = Gtk.Label()
-                            if weight_status == 'warning':
-                                weight_detail_label.set_markup(f'Warning! Filament required ({required_weight}g) is higher than the remaining weight ({remaining_weight:.1f}g)')
-                            else:  # caution
-                                weight_detail_label.set_markup(f'Caution, Filament required ({required_weight}g) is close to the remaining weight ({remaining_weight:.1f}g), filament may runout midprint')
-                            weight_detail_label.set_use_markup(True)
-                            weight_detail_label.set_xalign(0.0)
-                            
-                            weight_banner_box.add(weight_main_label)
-                            weight_banner_box.add(weight_detail_label)
-                            weight_banner_box.set_margin_bottom(10)
-                            grid.attach(weight_banner_box, 0, current_row, 1, 1)
-                            current_row += 1
-                        
-                        label_text.set_margin_bottom(10)
-                        grid.attach(label_text, 0, current_row, 1, 1)
-                        grid.attach(warning_label, 0, current_row + 1, 1, 1)
-
-                        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-                        box.add(grid)
-
-                        height = (self._screen.height - self._gtk.dialog_buttons_height - self._gtk.font_size) * .70
-                        pixbuf = self.get_file_image(filename, self._screen.width * .9, height)
-                        if pixbuf is not None:
-                            image = Gtk.Image.new_from_pixbuf(pixbuf)
-                            box.add(image)
-
-
-                        dialog = self._gtk.Dialog(_("Print") + f' {filename}', buttons, box, self.confirm_compatible_print_response, filename)
-                        dialog.get_style_context().add_class('confirmPrintDialog')
-                        return    
+                    # Live comparison against the printer's features.yml.
+                    config_verifier = check_config(
+                        self.file_metadata.get('config_yml'),
+                        self._machine_config,
+                    )
                     # Handle filament type and nozzle size check
-                    config_verifier = self.file_metadata['config_verifier'].copy()
                     if self.shared_printer_config.filament is None:
                         config_verifier.append("Warning! Filament type is not set on this printer.")
                     elif self.file_metadata['filament_type'] != self.shared_printer_config.filament:
@@ -1039,6 +1009,25 @@ class Panel(ScreenPanel):
                 data['item']["path"] = data['item']["path"][7:]
             self.add_item_from_callback(action, data)
 
+    def _load_machine_config(self):
+        try:
+            with open(FEATURES_FILE_PATH, 'r') as f:
+                self._machine_config = yaml.safe_load(f)
+            logging.info(f"[ConfigVerifier] Loaded {FEATURES_FILE_PATH}")
+        except FileNotFoundError:
+            self._machine_config = None
+            logging.info(f"[ConfigVerifier] {FEATURES_FILE_PATH} not present; config verification disabled")
+        except yaml.YAMLError:
+            self._machine_config = None
+            logging.exception(f"[ConfigVerifier] Failed to parse {FEATURES_FILE_PATH}")
+
+    def _manual_refresh(self, *args):
+        # User-initiated refresh — also re-read features.yml in case it
+        # changed since the panel was first opened. Directory navigation
+        # and view-mode toggles do NOT trigger a reload to keep nav snappy.
+        self._load_machine_config()
+        self._refresh_files(*args)
+
     def _refresh_files(self, *args):
         logging.info("Refreshing")
         self.set_loading(True)
@@ -1121,7 +1110,9 @@ class Panel(ScreenPanel):
             itemname = Gtk.Label(hexpand=True, halign=Gtk.Align.START,
                                 ellipsize=Pango.EllipsizeMode.END)
             itemname.get_style_context().add_class("print-filename")
-            itemname.set_markup(f"<big><b>☁ {basename}</b></big>")
+            itemname.set_markup(f"<big><b>☁ {GLib.markup_escape_text(basename)}</b></big>")
+            itemname.set_max_width_chars(int(self._screen.width / max(self._gtk.font_size, 12) * 0.85))
+            itemname.set_tooltip_text(display_name)
             info = Gtk.Label(hexpand=True, halign=Gtk.Align.START)
             info.get_style_context().add_class("print-info")
             size_str = self._human_size(size)
@@ -1146,6 +1137,12 @@ class Panel(ScreenPanel):
             fbchild.add(row)
         else:
             icon = self._gtk.Button(label=f"☁ {basename}")
+            icon.set_tooltip_text(display_name)
+            inner_label = find_widget(icon, Gtk.Label)
+            if inner_label is not None:
+                columns = 3 if self._screen.vertical_mode else 4
+                cell_w = self._screen.width / columns
+                inner_label.set_max_width_chars(max(8, int(cell_w / max(self._gtk.font_size, 12) * 0.85)))
             icon.connect("clicked", self._show_fleet_download_dialog, fleet_filename, display_name, size)
             image_args = (None, icon, self.thumbsize, False, "network")
             fbchild.add(icon)
@@ -1162,12 +1159,54 @@ class Panel(ScreenPanel):
         return f"{size:.1f} TB"
 
     def _show_fleet_download_dialog(self, widget, fleet_filename, display_name, size):
-        """Show dialog with Cancel / Download / Download & Print."""
+        """Show dialog with Cancel / Download / Download & Print.
+        Includes live config-mismatch warnings using the file's embedded YAML
+        block (carried in the fleet daemon's /gcodes/fleet-files response)."""
         if self._fleet_downloading:
             self._screen.show_popup_message(
                 f"Download already in progress:\n{self._fleet_download_filename}", 2
             )
             return
+
+        # Look up the daemon-reported entry to pull cached metadata. The fleet
+        # list is cached per panel refresh; missing entries mean a stale view.
+        config_yml = None
+        fleet_filament_type = None
+        fleet_nozzle_diameter = None
+        for f in self.fleet_files:
+            if f.get("filename") == fleet_filename:
+                config_yml = f.get("config_yml")
+                fleet_filament_type = f.get("filament_type")
+                fleet_nozzle_diameter = f.get("nozzle_diameter")
+                break
+
+        warnings_list = check_config(config_yml, self._machine_config)
+
+        # Live filament-type check — mirrors confirm_compatible_print at
+        # panels/print.py:657-661 so fleet files surface the same warnings.
+        if self.shared_printer_config.filament is None:
+            warnings_list.append("Warning! Filament type is not set on this printer.")
+        elif fleet_filament_type is not None and fleet_filament_type != self.shared_printer_config.filament:
+            warnings_list.append(
+                f"Warning! Filament type mismatch: expected {fleet_filament_type},\n\t but the printer filament is set to {self.shared_printer_config.filament}"
+            )
+
+        # Live nozzle-diameter check — mirrors confirm_compatible_print:663-673.
+        try:
+            printer_nozzle = float(self.shared_printer_config.nozzle)
+            if fleet_nozzle_diameter is not None and fleet_nozzle_diameter != printer_nozzle:
+                warnings_list.append(
+                    f"Warning! Nozzle diameter mismatch: expected {fleet_nozzle_diameter} mm,\n\t but the printer nozzle size is set to {self.shared_printer_config.nozzle} mm"
+                )
+        except (ValueError, TypeError):
+            nozzle_val = self.shared_printer_config.nozzle
+            if nozzle_val:
+                warnings_list.append(f"Warning! Nozzle size is invalid: '{nozzle_val}'")
+            else:
+                warnings_list.append("Warning! Nozzle size is not set on this printer.")
+
+        warning_strings = [s for s in warnings_list if s.startswith("Warning!")]
+        caution_strings = [s for s in warnings_list if s.startswith("Caution!")]
 
         size_str = self._human_size(size)
         buttons = [
@@ -1175,6 +1214,46 @@ class Panel(ScreenPanel):
             {"name": "Download", "response": Gtk.ResponseType.APPLY, "style": "dialog-info"},
             {"name": "Download & Print", "response": Gtk.ResponseType.OK},
         ]
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+
+        if warning_strings or caution_strings:
+            grid = Gtk.Grid()
+            grid.set_column_homogeneous(True)
+            current_row = 0
+            if warning_strings:
+                header = Gtk.Label(label='<b><span size="20480">Warning: Running this file may damage your machine</span></b>')
+                header.get_style_context().add_class('compatibilityMessage-warning')
+                header.set_use_markup(True)
+                header.set_xalign(0.0)
+                header.set_margin_bottom(5)
+                grid.attach(header, 0, current_row, 1, 1)
+                current_row += 1
+                for entry in warning_strings:
+                    detail = Gtk.Label(label=entry)
+                    detail.set_xalign(0.0)
+                    detail.set_line_wrap(True)
+                    detail.set_margin_bottom(5)
+                    grid.attach(detail, 0, current_row, 1, 1)
+                    current_row += 1
+            if caution_strings:
+                header = Gtk.Label(label='<b><span size="20480">Caution: Print quality may be degraded</span></b>')
+                header.get_style_context().add_class('compatibilityMessage-caution')
+                header.set_use_markup(True)
+                header.set_xalign(0.0)
+                header.set_margin_bottom(5)
+                grid.attach(header, 0, current_row, 1, 1)
+                current_row += 1
+                for entry in caution_strings:
+                    detail = Gtk.Label(label=entry)
+                    detail.set_xalign(0.0)
+                    detail.set_line_wrap(True)
+                    detail.set_margin_bottom(5)
+                    grid.attach(detail, 0, current_row, 1, 1)
+                    current_row += 1
+            grid.set_margin_bottom(10)
+            box.add(grid)
+
         label = Gtk.Label(hexpand=True, vexpand=True, wrap=True, wrap_mode=Pango.WrapMode.WORD_CHAR)
         label.set_markup(
             f'<b>{display_name}</b>\n\n'
@@ -1183,12 +1262,14 @@ class Panel(ScreenPanel):
             f'This file is on the fleet server.\n'
             f'Download it to start printing.'
         )
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         box.add(label)
-        self._gtk.Dialog(
+
+        dialog = self._gtk.Dialog(
             f"☁ Fleet File", buttons, box,
             self._fleet_download_dialog_response, fleet_filename
         )
+        if warning_strings or caution_strings:
+            dialog.get_style_context().add_class('confirmPrintDialog')
 
     def _fleet_download_dialog_response(self, dialog, response_id, fleet_filename):
         self._gtk.remove_dialog(dialog)
