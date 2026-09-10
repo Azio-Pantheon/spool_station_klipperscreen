@@ -45,7 +45,6 @@ class Panel(ScreenPanel):
         self.mms2 = _("mm/s²")
         self.mms3 = _("mm³/s")
         self.status_grid = self.move_grid = self.time_grid = self.extrusion_grid = None
-        self.is_primed = True
         self.title_refresh_timeout = None
         self.qr_scan_buffer = ""
         self.qr_scan_active = False
@@ -597,10 +596,6 @@ class Panel(ScreenPanel):
                     data["print_stats"]["state"],
                     msg=f'{data["print_stats"]["message"] if "message" in data["print_stats"] else ""}'
                 )
-                if data['print_stats']["state"] in ["cancelled", "error", "complete"]:
-                    self.is_primed = False
-                else:
-                    self.is_primed = True
 
             if 'filename' in data['print_stats']:
                 self.update_filename(data['print_stats']["filename"])
@@ -1242,7 +1237,8 @@ class Panel(ScreenPanel):
     def prime_print_response(self, dialog, response_id):
         self._gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
-            self.is_primed = True
+            # Operator confirmed the bed is clear; the print start that follows
+            # makes Moonraker clear is_primed again, so no state write is needed here.
             #def restart(self, widget):
             if self.filename:
                 self.disable_button("restart")
@@ -1257,7 +1253,7 @@ class Panel(ScreenPanel):
 
     def handle_restart_button(self, widget):
         if self._screen.shared_printer_config.enable_prime == 1:
-            if self.is_primed:
+            if self._screen.shared_printer_config.is_primed == 1:
                 # If ready, restart
                 self.restart(widget)
             else:

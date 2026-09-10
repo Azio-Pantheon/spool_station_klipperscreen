@@ -18,7 +18,6 @@ class Panel(MenuPanel):
         self.main_menu = Gtk.Grid(row_homogeneous=True, column_homogeneous=True, hexpand=True, vexpand=True)
         scroll = self._gtk.ScrolledWindow()
         self.numpad_visible = False
-        self.is_primed = True
 
         logging.info("### Making MainMenu")
 
@@ -62,10 +61,7 @@ class Panel(MenuPanel):
             self.main_menu.attach(self.overlay, 1, 0, 1, 1)
 
             # Set initial visibility instead of using realize callback
-            if getattr(self._screen.shared_printer_config, 'enable_prime', 0) == 1 and not self.is_primed:
-                self.prime_button.show()
-            else:
-                self.prime_button.hide()
+            self.update_prime_button()
 
         self.content.add(self.main_menu)
 
@@ -244,26 +240,9 @@ class Panel(MenuPanel):
         self._screen.base_panel.set_control_sensitive(False, control='back')
 
     def process_update(self, action, data):
-        if "print_stats" in data:
-            if 'state' in data['print_stats']:
-                if data["print_stats"]["state"] in ["cancelled", "error", "complete"]:
-                    self.is_primed = False
-                else:
-                    self.is_primed = True
-
-        # updating HS3 machine states
-        if "machine_state" in data:
-            if 'enable_prime' in data['machine_state']:
-                    self._screen.shared_printer_config.enable_prime = data['machine_state']['enable_prime']
-            if 'is_purging' in data['machine_state']:
-                    self._screen.shared_printer_config.is_purging = data['machine_state']['is_purging']
-        if self._screen.shared_printer_config.enable_prime == 1:
-            if self.is_primed:
-                self.hide_prime_button()
-            else:
-                self.show_prime_button()
-        else:
-            self.hide_prime_button()
+        # Prime state is owned by Moonraker (machine_state.is_primed) and synced
+        # into shared_printer_config by KlipperScreen.process_update before we get here.
+        self.update_prime_button()
 
         if action != "notify_status_update":
             return
@@ -350,14 +329,25 @@ class Panel(MenuPanel):
         self._gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
             logging.info(f"Starting prime")
+            # Clear the finished job in Klipper, then record the confirmation in Moonraker.
             self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
-            self.is_primed = True
+            self._screen.set_prime_state(1)
+
+    def update_prime_button(self):
+        cfg = self._screen.shared_printer_config
+        if cfg.enable_prime == 1 and cfg.is_primed != 1:
+            self.show_prime_button()
+        else:
+            self.hide_prime_button()
 
     def hide_prime_button(self):
-        self.prime_button.hide()
+        # The button only exists in horizontal layout
+        if hasattr(self, "prime_button"):
+            self.prime_button.hide()
 
     def show_prime_button(self):
-        self.prime_button.show()
+        if hasattr(self, "prime_button"):
+            self.prime_button.show()
 
     def create_filament_info_panel(self):
             """Create panel showing filament type, nozzle size, and weight info as buttons"""

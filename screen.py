@@ -77,12 +77,16 @@ def state_execute(callback):
 
     
 class SharedPrinterConfig:
-    def __init__(self, filament='PETG-CF', nozzle='0.4', nozzle_type='', enable_prime = 1, is_purging = 0):
+    def __init__(self, filament='PETG-CF', nozzle='0.4', nozzle_type='', enable_prime = 1, is_purging = 0, is_primed = 0):
         self.filament = filament
         self.nozzle = nozzle
         self.nozzle_type = nozzle_type
         self.enable_prime = enable_prime
         self.is_purging = is_purging
+        # Owned by Moonraker (machine_state.is_primed). 1 only after the operator
+        # confirmed a clear bed; Moonraker resets it on Klipper restart and on
+        # every print start/end. Default to "not primed" until Moonraker says otherwise.
+        self.is_primed = is_primed
 
 
 class KlipperScreen(Gtk.Window):
@@ -293,7 +297,7 @@ class KlipperScreen(Gtk.Window):
                 "exclude_object": ["current_object", "objects", "excluded_objects"],
                 "manual_probe": ['is_active'],
                 "screws_tilt_adjust": ['results', 'error'],
-                "machine_state": ['is_purging', 'enable_prime']
+                "machine_state": ['is_purging', 'enable_prime', 'is_primed']
             }
         }
         for extruder in self.printer.get_tools():
@@ -864,14 +868,11 @@ class KlipperScreen(Gtk.Window):
         self.process_update(action, data)
 
     def process_update(self, *args):
+        if len(args) > 1 and args[0] == "notify_status_update" and isinstance(args[1], dict):
+            self.update_machine_state(args[1])
         if self.panels and 'job_status' in self.panels:
-            if self.panels['job_status'].state in ["cancelled", "error", "complete","printing"]:
-                if 'main_menu' in self.panels:
-                    self.panels['main_menu'].is_primed = False
+            if self.panels['job_status'].state in ["cancelled", "error", "complete", "printing"]:
                 self.panels['job_status'].process_update(*args)
-            else:
-                if 'main_menu' in self.panels:
-                    self.panels['main_menu'].is_primed = True
 
         self.base_panel.process_update(*args)
         if self._cur_panels and hasattr(self.panels[self._cur_panels[-1]], "process_update"):
@@ -1292,6 +1293,35 @@ class KlipperScreen(Gtk.Window):
             },
             handle_response  # Callback function
         )
+
+    def update_machine_state(self, data):
+        # machine_state is synthesized by Moonraker. Keep the shared copy current
+        # no matter which panel is showing, so panels never have to derive it.
+        machine_state = data.get("machine_state")
+        if not isinstance(machine_state, dict):
+            return
+        for key in ("enable_prime", "is_purging", "is_primed"):
+            if key in machine_state:
+                setattr(self.shared_printer_config, key, machine_state[key])
+
+    def set_prime_state(self, value):
+        # Tell Moonraker the operator confirmed the bed is clear (1) or not (0).
+        # Moonraker is the single owner of this flag and pushes it back to every
+        # subscriber, including Mainsail.
+        value = 1 if value else 0
+
+        def handle_response(response, method, params, *args):
+            if response.get("error"):
+                self.show_popup_message(
+                    f"Failed to update prime state: {response['error']['message']}",
+                    level=3
+                )
+                return
+            self.shared_printer_config.is_primed = value
+            # Refresh the visible panel right away instead of waiting for the push.
+            self.process_update("notify_status_update", {"machine_state": {"is_primed": value}})
+
+        self._ws.send_method("machine.prime_state", {"value": value}, handle_response)
 
     def toggle_enable_wet_filament_purge(self, switch):
         enable_wet_filament_purge = 1 if switch else 0
