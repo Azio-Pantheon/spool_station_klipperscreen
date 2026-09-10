@@ -78,7 +78,7 @@ def state_execute(callback):
     
 class SharedPrinterConfig:
     def __init__(self, filament='PETG-CF', nozzle='0.4', nozzle_type='', enable_prime=1, is_purging=0, is_primed=0,
-                 wet_filament_purge=1):
+                 wet_filament_purge=1, is_fleet_worker=0):
         self.filament = filament
         self.nozzle = nozzle
         self.nozzle_type = nozzle_type
@@ -91,6 +91,9 @@ class SharedPrinterConfig:
         # confirmed a clear bed; Moonraker resets it on Klipper restart and on
         # every print start/end. Default to "not primed" until Moonraker says otherwise.
         self.is_primed = is_primed
+        # Owned by Moonraker (machine_state.is_fleet_worker), mirrored from
+        # fleet_daemon's worker list. 1 = jobs may be started automatically here.
+        self.is_fleet_worker = is_fleet_worker
 
 
 class KlipperScreen(Gtk.Window):
@@ -301,7 +304,8 @@ class KlipperScreen(Gtk.Window):
                 "exclude_object": ["current_object", "objects", "excluded_objects"],
                 "manual_probe": ['is_active'],
                 "screws_tilt_adjust": ['results', 'error'],
-                "machine_state": ['is_purging', 'enable_prime', 'is_primed', 'wet_filament_purge']
+                "machine_state": ['is_purging', 'enable_prime', 'is_primed', 'wet_filament_purge',
+                                  'is_fleet_worker']
             }
         }
         for extruder in self.printer.get_tools():
@@ -1336,12 +1340,17 @@ class KlipperScreen(Gtk.Window):
         machine_state = data.get("machine_state")
         if not isinstance(machine_state, dict):
             return
-        for key in ("is_purging", "is_primed"):
+        for key in ("is_purging", "is_primed", "is_fleet_worker"):
             if key in machine_state:
                 setattr(self.shared_printer_config, key, machine_state[key])
         for key in self.MOONRAKER_OPTIONS:
             if key in machine_state:
                 self.mirror_moonraker_option(key, machine_state[key])
+        if "is_fleet_worker" in machine_state and hasattr(self, "base_panel"):
+            try:
+                self.base_panel.update_fleet_worker_badge()
+            except Exception as e:
+                logging.debug(f"Failed to update fleet worker badge: {e}")
 
     def set_prime_state(self, value):
         # Tell Moonraker the operator confirmed the bed is clear (1) or not (0).

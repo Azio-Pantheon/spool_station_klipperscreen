@@ -287,6 +287,16 @@ trough {
     min-height: 2em;
 }
 
+.fleet_worker_badge {
+    background-color: @color4;
+    color: @text;
+    font-weight: bold;
+    font-size: .8em;
+    padding: .15em .6em;
+    margin: 0 .4em;
+    border-radius: .6em;
+}
+
 .content {
     margin: 0 .1em;
 }
