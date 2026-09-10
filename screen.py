@@ -1321,7 +1321,9 @@ class KlipperScreen(Gtk.Window):
             # Refresh the visible panel right away instead of waiting for the push.
             self.process_update("notify_status_update", {"machine_state": {"is_primed": value}})
 
-        self._ws.send_method("machine.prime_state", {"value": value}, handle_response)
+        # HTTP path is /machine/prime_state. Because Moonraker registers it for
+        # GET|POST, the JSON-RPC names are machine.get_prime_state / machine.post_prime_state.
+        self._ws.send_method("machine.post_prime_state", {"value": value}, handle_response)
 
     def toggle_enable_wet_filament_purge(self, switch):
         enable_wet_filament_purge = 1 if switch else 0
