@@ -77,11 +77,15 @@ def state_execute(callback):
 
     
 class SharedPrinterConfig:
-    def __init__(self, filament='PETG-CF', nozzle='0.4', nozzle_type='', enable_prime = 1, is_purging = 0, is_primed = 0):
+    def __init__(self, filament='PETG-CF', nozzle='0.4', nozzle_type='', enable_prime=1, is_purging=0, is_primed=0,
+                 wet_filament_purge=1):
         self.filament = filament
         self.nozzle = nozzle
         self.nozzle_type = nozzle_type
+        # Owned by Moonraker (HS3 database). KlipperScreen.conf only mirrors these
+        # so the settings switches survive a restart while Moonraker is unreachable.
         self.enable_prime = enable_prime
+        self.wet_filament_purge = wet_filament_purge
         self.is_purging = is_purging
         # Owned by Moonraker (machine_state.is_primed). 1 only after the operator
         # confirmed a clear bed; Moonraker resets it on Klipper restart and on
@@ -297,7 +301,7 @@ class KlipperScreen(Gtk.Window):
                 "exclude_object": ["current_object", "objects", "excluded_objects"],
                 "manual_probe": ['is_active'],
                 "screws_tilt_adjust": ['results', 'error'],
-                "machine_state": ['is_purging', 'enable_prime', 'is_primed']
+                "machine_state": ['is_purging', 'enable_prime', 'is_primed', 'wet_filament_purge']
             }
         }
         for extruder in self.printer.get_tools():
@@ -1244,6 +1248,12 @@ class KlipperScreen(Gtk.Window):
         #self.reload_panels()
         self.restart_ks()
         
+    # Moonraker HS3 database key -> KlipperScreen.conf option that mirrors it.
+    MOONRAKER_OPTIONS = {
+        "enable_prime": "enable_prime",
+        "wet_filament_purge": "enable_wet_filament_purge",
+    }
+
     def load_machine_state(self):
         # Define a callback function to handle the response
         def handle_response(response, method, params, *args):
@@ -1253,7 +1263,8 @@ class KlipperScreen(Gtk.Window):
                 value = result.get("value", {})
                 self.shared_printer_config.filament = value.get("filament_type", "")  # Set the filament type
                 self.shared_printer_config.nozzle = value.get("nozzle_size", "")      # Set the nozzle size
-                self.shared_printer_config.enable_prime = value.get("enable_prime", 1)      # Set the nozzle size
+                for key in self.MOONRAKER_OPTIONS:
+                    self.mirror_moonraker_option(key, value.get(key, 1))
             except KeyError as e:
                 print(f"Error processing response: {e}")
 
@@ -1267,32 +1278,57 @@ class KlipperScreen(Gtk.Window):
             handle_response
         )
 
-    def toggle_enable_prime(self, switch):
-        enable_prime = 1 if switch else 0
+    def mirror_moonraker_option(self, key, value):
+        # Moonraker is the single source of truth for these flags. Copy the value
+        # into the shared state, the conf mirror, and the settings switch if shown.
+        enabled = 1 if value else 0
+        setattr(self.shared_printer_config, key, enabled)
+        option = self.MOONRAKER_OPTIONS[key]
+        conf_value = "True" if enabled else "False"
+        if self._config.get_config().get("main", option, fallback=None) != conf_value:
+            logging.info(f"Mirroring Moonraker {key}={enabled} into KlipperScreen.conf")
+            self._config.set("main", option, conf_value)
+            self._config.save_user_config_options()
+        if "settings" in self.panels:
+            self.panels["settings"].sync_remote_switch(option, bool(enabled))
 
-        # Define a callback to handle Moonraker's response
+    def set_moonraker_option(self, key, enabled, label):
+        # Persist a Moonraker-owned flag. Nothing local changes until Moonraker
+        # acknowledges; on failure the switch is put back to the last known value.
+        enabled = 1 if enabled else 0
+        option = self.MOONRAKER_OPTIONS[key]
+
+        def revert(message):
+            self.show_popup_message(message, level=3)
+            if "settings" in self.panels:
+                self.panels["settings"].sync_remote_switch(
+                    option, bool(getattr(self.shared_printer_config, key)))
+
         def handle_response(response, method, params, *args):
             if response.get("error"):
-                self.show_popup_message(
-                    f"Failed to update enable_prime: {response['error']['message']}",
-                    level=3
-                )
-            else:
-                # Update config state
-                self.shared_printer_config.enable_prime = enable_prime
-                state_str = "enabled" if enable_prime else "disabled"
-                self.show_popup_message(f"Prime function {state_str}.", level=1)
+                revert(f"Failed to update {key}: {response['error']['message']}")
+                return
+            self.mirror_moonraker_option(key, enabled)
+            state_str = "enabled" if enabled else "disabled"
+            self.show_popup_message(f"{label} {state_str}.", level=1)
 
-        # Send new state to Moonraker
-        self._ws.send_method(
+        sent = self._ws.send_method(
             "server.database.post_item",
             {
-                "namespace": "HS3", 
-                "key": "enable_prime",  
-                "value": enable_prime
+                "namespace": "HS3",
+                "key": key,
+                "value": enabled
             },
-            handle_response  # Callback function
+            handle_response
         )
+        if sent is False:
+            revert(f"Failed to update {key}: not connected to Moonraker")
+
+    def toggle_enable_prime(self, switch):
+        self.set_moonraker_option("enable_prime", switch, "Prime function")
+
+    def toggle_enable_wet_filament_purge(self, switch):
+        self.set_moonraker_option("wet_filament_purge", switch, "Wet Filament Purge")
 
     def update_machine_state(self, data):
         # machine_state is synthesized by Moonraker. Keep the shared copy current
@@ -1300,9 +1336,12 @@ class KlipperScreen(Gtk.Window):
         machine_state = data.get("machine_state")
         if not isinstance(machine_state, dict):
             return
-        for key in ("enable_prime", "is_purging", "is_primed"):
+        for key in ("is_purging", "is_primed"):
             if key in machine_state:
                 setattr(self.shared_printer_config, key, machine_state[key])
+        for key in self.MOONRAKER_OPTIONS:
+            if key in machine_state:
+                self.mirror_moonraker_option(key, machine_state[key])
 
     def set_prime_state(self, value):
         # Tell Moonraker the operator confirmed the bed is clear (1) or not (0).
@@ -1324,31 +1363,6 @@ class KlipperScreen(Gtk.Window):
         # HTTP path is /machine/prime_state. Because Moonraker registers it for
         # GET|POST, the JSON-RPC names are machine.get_prime_state / machine.post_prime_state.
         self._ws.send_method("machine.post_prime_state", {"value": value}, handle_response)
-
-    def toggle_enable_wet_filament_purge(self, switch):
-        enable_wet_filament_purge = 1 if switch else 0
-
-        # Define a callback to handle Moonraker's response
-        def handle_response(response, method, params, *args):
-            if response.get("error"):
-                self.show_popup_message(
-                    f"Failed to update enable_wet_filament_purge: {response['error']['message']}",
-                    level=3
-                )
-            else:
-                state_str = "enabled" if enable_wet_filament_purge else "disabled"
-                self.show_popup_message(f"Wet Filament Purge {state_str}.", level=1)
-
-        # Send new state to Moonraker
-        self._ws.send_method(
-            "server.database.post_item",
-            {
-                "namespace": "HS3", 
-                "key": "wet_filament_purge",  
-                "value": enable_wet_filament_purge
-            },
-            handle_response  # Callback function
-        )
 
 def main():
     parser = argparse.ArgumentParser(description="KlipperScreen - A GUI for Klipper")

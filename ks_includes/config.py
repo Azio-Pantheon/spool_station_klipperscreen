@@ -286,10 +286,13 @@ class KlipperScreenConfig:
                                "value": "True"}},
             {"autoclose_popups": {"section": "main", "name": _("Auto Close Popups"), "type": "binary",
                                "value": "False"}},
+            # "remote" options are owned by Moonraker (HS3 database); the conf value is
+            # only a mirror and the callback is responsible for persisting the change.
             {"enable_prime": {"section": "main", "name": _("Enable Prime"), "type": "binary",
-                               "value": "True", "callback": screen.toggle_enable_prime}},
+                               "value": "True", "remote": True, "callback": screen.toggle_enable_prime}},
             {"enable_wet_filament_purge": {"section": "main", "name": _("Enable Wet Filament Purge"), "type": "binary",
-                               "value": "True", "callback": screen.toggle_enable_wet_filament_purge}},         
+                               "value": "True", "remote": True,
+                               "callback": screen.toggle_enable_wet_filament_purge}},
             # {"": {"section": "main", "name": _(""), "type": ""}}
         ]
 
