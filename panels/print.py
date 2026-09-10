@@ -486,7 +486,7 @@ class Panel(ScreenPanel):
             self._screen.show_popup_message(("Wet Filament Purge: Purging wet filament. A print has already been started, it will begin after the purge."), level=2)
             return
         # Check whether to show prime dialogue or not
-        if (self._screen.shared_printer_config.enable_prime == 1) and (not self.is_primed):
+        if (self._screen.shared_printer_config.enable_prime == 1) and (self._screen.shared_printer_config.is_primed != 1):
             self.prime_print(widget)
             return
 
@@ -1477,21 +1477,6 @@ class Panel(ScreenPanel):
         )
         self.back()
 
-    def process_update(self, action, data):
-        if "print_stats" in data:
-            if 'state' in data['print_stats']:
-                if data["print_stats"]["state"] in ["cancelled", "error", "complete"]:
-                    self.is_primed = False
-                else:
-                    self.is_primed = True
-
-        # updating HS3 machine states
-        if "machine_state" in data:
-            if 'enable_prime' in data['machine_state']:
-                    self._screen.shared_printer_config.enable_prime = data['machine_state']['enable_prime']
-            if 'is_purging' in data['machine_state']:
-                    self._screen.shared_printer_config.is_purging = data['machine_state']['is_purging']
-
     def prime_print(self, widget):
 
         buttons = [
@@ -1537,8 +1522,9 @@ class Panel(ScreenPanel):
         self._gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
             logging.info(f"Starting prime")
+            # Clear the finished job in Klipper, then record the confirmation in Moonraker.
             self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
-            self.is_primed = True
+            self._screen.set_prime_state(1)
 
     def confirm_move_gcode(self, widget, filename):
         self.file_metadata = self._files.get_file_info(filename)

@@ -10,6 +10,7 @@ class Panel(ScreenPanel):
     def __init__(self, screen, title):
         super().__init__(screen, title)
         self.printers = self.settings = self.langs = {}
+        self.remote_switches = {}
         self.menu = ['settings_menu']
         options = self._config.get_configurable_options().copy()
 
@@ -65,8 +66,14 @@ class Panel(ScreenPanel):
         dev.add(labels)
         if option['type'] == "binary":
             switch = Gtk.Switch(active=self._config.get_config().getboolean(option['section'], opt_name))
-            switch.connect("notify::active", self.switch_config_option, option['section'], opt_name,
-                           option['callback'] if "callback" in option else None)
+            if option.get("remote"):
+                # Moonraker owns this value: don't touch the conf here, the callback
+                # persists it and mirrors it back once Moonraker acknowledges.
+                handler = switch.connect("notify::active", self.switch_remote_option, option['callback'])
+                self.remote_switches[opt_name] = (switch, handler)
+            else:
+                switch.connect("notify::active", self.switch_config_option, option['section'], opt_name,
+                               option['callback'] if "callback" in option else None)
             dev.add(switch)
         elif option['type'] == "dropdown":
             dropdown = Gtk.ComboBoxText()
@@ -113,5 +120,19 @@ class Panel(ScreenPanel):
         self.labels[boxname].attach(opt_array[opt_name]['row'], 0, pos, 1, 1)
         self.labels[boxname].show_all()
         
+    def switch_remote_option(self, switch, gparam, callback):
+        callback(switch.get_active())
+
+    def sync_remote_switch(self, opt_name, active):
+        # Reflect the Moonraker value without re-triggering the toggle callback.
+        if opt_name not in self.remote_switches:
+            return
+        switch, handler = self.remote_switches[opt_name]
+        if switch.get_active() == active:
+            return
+        switch.handler_block(handler)
+        switch.set_active(active)
+        switch.handler_unblock(handler)
+
     def on_dropdown_popup_shown(self, widget, _param):
         time.sleep(0.1)
