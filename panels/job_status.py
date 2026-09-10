@@ -825,12 +825,8 @@ class Panel(ScreenPanel):
         if self.qr_scan_active:
             return
         if not self.fleet_daemon_url:
-            logging.warning("[QR] fleet_daemon_url not configured, skipping QR scan")
-            self._screen.show_popup_message(
-                '<span size="30000" weight="bold">Fleet daemon not configured</span>\n\n'
-                '<span size="16000">Set fleet_daemon_url in KlipperScreen.conf</span>',
-                level=2,
-            )
+            # Fleet not configured: behave as if the feature does not exist.
+            logging.debug("[QR] fleet_daemon_url not configured, skipping QR scan")
             return
         # Always allow scanning – if fleet is down the QR will be saved offline
         self._activate_qr_scan()

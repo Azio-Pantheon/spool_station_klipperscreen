@@ -167,13 +167,14 @@ class BasePanel(ScreenPanel):
             # Nozzle life tracker
             self.labels['nozzle_life'] = Gtk.Label(label="")
             self.labels['nozzle_life_box'] = Gtk.Box()
+            # Stay hidden until nozzle life data arrives, even if the parent is show_all()'d
+            self.labels['nozzle_life_box'].set_no_show_all(True)
             nozzle_icon = self._gtk.Image("extruder-health", img_size, img_size)
             self.labels['nozzle_life_box'].pack_start(nozzle_icon, False, False, 3)
             self.labels['nozzle_life_box'].pack_start(self.labels['nozzle_life'], False, False, 0)
             self.control['temp_box'].add(self.labels['nozzle_life_box'])
 
             self.control['temp_box'].show_all()
-            self.labels['nozzle_life_box'].hide()  # Hidden until data loads
         except Exception as e:
             logging.debug(f"Couldn't create heaters box: {e}")
 
@@ -209,7 +210,10 @@ class BasePanel(ScreenPanel):
                     self.labels['nozzle_life'].set_markup(f'<span foreground="red">{pct:.0f}%</span>')
                 else:
                     self.labels['nozzle_life'].set_label(f"{pct:.0f}% Health")
-                self.labels['nozzle_life_box'].show_all()
+                # no_show_all is set on the box, so show children explicitly
+                for child in self.labels['nozzle_life_box'].get_children():
+                    child.show()
+                self.labels['nozzle_life_box'].show()
             else:
                 self.labels['nozzle_life_box'].hide()
         except Exception as e:
