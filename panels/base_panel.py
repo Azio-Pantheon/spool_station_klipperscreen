@@ -91,6 +91,12 @@ class BasePanel(ScreenPanel):
 
         self.titlelbl = Gtk.Label(hexpand=True, halign=Gtk.Align.CENTER, ellipsize=Pango.EllipsizeMode.END)
 
+        # Shown only while Moonraker reports machine_state.is_fleet_worker == 1
+        self.fleet_worker_badge = Gtk.Label(label=_("FLEET MANAGED WORKER"), valign=Gtk.Align.CENTER)
+        self.fleet_worker_badge.get_style_context().add_class("fleet_worker_badge")
+        self.fleet_worker_badge.set_no_show_all(True)
+        self.fleet_worker_badge.hide()
+
         self.control['time'] = Gtk.Label(label="00:00 AM")
         self.control['time_box'] = Gtk.Box(halign=Gtk.Align.END)
         self.control['time_box'].pack_end(self.control['time'], True, True, 10)
@@ -99,8 +105,10 @@ class BasePanel(ScreenPanel):
         self.titlebar.get_style_context().add_class("title_bar")
         self.titlebar.add(self.control['temp_box'])
         self.titlebar.add(self.titlelbl)
+        self.titlebar.add(self.fleet_worker_badge)
         self.titlebar.add(self.control['time_box'])
         self.set_title(title)
+        self.update_fleet_worker_badge()
 
         # Main layout
         self.main_grid = Gtk.Grid()
@@ -342,6 +350,25 @@ class BasePanel(ScreenPanel):
 
     def show_printer_select(self, show=True):
         self.control['printer_select'].set_visible(show)
+
+    def update_fleet_worker_badge(self):
+        # Badge visibility follows Moonraker's machine_state.is_fleet_worker.
+        cfg = getattr(self._screen, "shared_printer_config", None)
+        is_worker = getattr(cfg, "is_fleet_worker", 0)
+        try:
+            is_worker = int(is_worker)
+        except (TypeError, ValueError):
+            is_worker = 0
+        # The title bar itself also gets construction-stripe styling (see
+        # .fleet_worker_titlebar in styles/base.css) so the state is obvious.
+        ctx = self.titlebar.get_style_context()
+        if is_worker == 1:
+            self.fleet_worker_badge.show()
+            if not ctx.has_class("fleet_worker_titlebar"):
+                ctx.add_class("fleet_worker_titlebar")
+        else:
+            self.fleet_worker_badge.hide()
+            ctx.remove_class("fleet_worker_titlebar")
 
     def set_title(self, title):
         self.titlebar.get_style_context().remove_class("message_popup_error")
