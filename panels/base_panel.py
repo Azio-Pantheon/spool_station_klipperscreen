@@ -92,7 +92,7 @@ class BasePanel(ScreenPanel):
         self.titlelbl = Gtk.Label(hexpand=True, halign=Gtk.Align.CENTER, ellipsize=Pango.EllipsizeMode.END)
 
         # Shown only while Moonraker reports machine_state.is_fleet_worker == 1
-        self.fleet_worker_badge = Gtk.Label(label=_("FLEET WORKER"), valign=Gtk.Align.CENTER)
+        self.fleet_worker_badge = Gtk.Label(label=_("FLEET MANAGED WORKER"), valign=Gtk.Align.CENTER)
         self.fleet_worker_badge.get_style_context().add_class("fleet_worker_badge")
         self.fleet_worker_badge.set_no_show_all(True)
         self.fleet_worker_badge.hide()
@@ -359,10 +359,16 @@ class BasePanel(ScreenPanel):
             is_worker = int(is_worker)
         except (TypeError, ValueError):
             is_worker = 0
+        # The title bar itself also gets construction-stripe styling (see
+        # .fleet_worker_titlebar in styles/base.css) so the state is obvious.
+        ctx = self.titlebar.get_style_context()
         if is_worker == 1:
             self.fleet_worker_badge.show()
+            if not ctx.has_class("fleet_worker_titlebar"):
+                ctx.add_class("fleet_worker_titlebar")
         else:
             self.fleet_worker_badge.hide()
+            ctx.remove_class("fleet_worker_titlebar")
 
     def set_title(self, title):
         self.titlebar.get_style_context().remove_class("message_popup_error")

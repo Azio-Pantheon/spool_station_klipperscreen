@@ -17,6 +17,7 @@
 @define-color pantheon-beige-corrected #c0a88c;
 
 @define-color pantheon-mint #66BE8E;
+@define-color pantheon-amber #f9c400;
 @define-color pantheon-violet #b894c4;
 @define-color pantheon-peach #f0d3b0;
 @define-color pantheon-pink #f69894;
@@ -340,7 +341,7 @@ button.color1.selected {
 }
 
 .fleet_worker_badge {
-    background-color: @pantheon-mint;
+    background-color: @pantheon-amber;
     color: @pantheon-background-grey;
     font-weight: bold;
     font-size: .8em;

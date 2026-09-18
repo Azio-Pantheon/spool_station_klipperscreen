@@ -288,13 +288,60 @@ trough {
 }
 
 .fleet_worker_badge {
-    background-color: @color4;
-    color: @text;
+    background-color: @warning;
+    color: @text-inv;
     font-weight: bold;
     font-size: .8em;
     padding: .15em .6em;
     margin: 0 .4em;
     border-radius: .6em;
+}
+
+/* Fleet-managed worker: pulsing, half-transparent yellow/black construction
+   stripes over the title bar. Only the gradient alpha is animated so the
+   label text keeps full opacity. Mirrors Mainsail's fleet-worker-topbar. */
+.title_bar.fleet_worker_titlebar {
+    background-image: repeating-linear-gradient(
+        -45deg,
+        rgba(249, 196, 0, 0.05) 0px,
+        rgba(249, 196, 0, 0.05) 20px,
+        rgba(21, 21, 21, 0.05) 20px,
+        rgba(21, 21, 21, 0.05) 40px
+    );
+    animation-name: fleet-worker-pulse;
+    animation-duration: 1.6s;
+    animation-timing-function: ease-in-out;
+    animation-iteration-count: infinite;
+}
+
+@keyframes fleet-worker-pulse {
+    0% {
+        background-image: repeating-linear-gradient(
+            -45deg,
+            rgba(249, 196, 0, 0.05) 0px,
+            rgba(249, 196, 0, 0.05) 20px,
+            rgba(21, 21, 21, 0.05) 20px,
+            rgba(21, 21, 21, 0.05) 40px
+        );
+    }
+    50% {
+        background-image: repeating-linear-gradient(
+            -45deg,
+            rgba(249, 196, 0, 0.25) 0px,
+            rgba(249, 196, 0, 0.25) 20px,
+            rgba(21, 21, 21, 0.25) 20px,
+            rgba(21, 21, 21, 0.25) 40px
+        );
+    }
+    100% {
+        background-image: repeating-linear-gradient(
+            -45deg,
+            rgba(249, 196, 0, 0.05) 0px,
+            rgba(249, 196, 0, 0.05) 20px,
+            rgba(21, 21, 21, 0.05) 20px,
+            rgba(21, 21, 21, 0.05) 40px
+        );
+    }
 }
 
 .content {
