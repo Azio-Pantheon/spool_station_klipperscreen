@@ -15,6 +15,13 @@ from ks_includes.widgets.autogrid import AutoGrid
 
 SPOOL_PENDING_FILE = "/home/hs3/printer_data/backup/klipperscreen_spool_pending.json"
 
+# Materials already offered by the hardcoded preset buttons in the "Select
+# Filament Type" dialog (upper-cased). Fleet catalog materials matching one of
+# these are NOT added a second time; the two PA-GF presets collapse to PA-GF.
+FLEET_PRESET_MATERIALS = {"PETG-CF", "PA-CF", "TPU", "PA-GF"}
+# Hardcoded preset labels that Moonraker knows as the single type "PA-GF".
+PA_GF_PRESET_LABELS = ("PA-GF (Natural)", "PA-GF (Dark Grey)")
+
 
 class Panel(ScreenPanel):
 
@@ -45,6 +52,18 @@ class Panel(ScreenPanel):
         self.qr_scan_active = False
         self.qr_scan_buffer = ""
         self._active_run_load_macro = False
+
+        # Fleet filament catalog (GET {fleet_daemon_url}/spool/filaments).
+        # Extra materials from fleet are appended to the hardcoded presets in
+        # the filament selection dialog when fleet is configured AND reachable.
+        # Fetched in the background (never blocks the dialog); the dialog uses
+        # whatever the last successful fetch returned.
+        self.fleet_filaments = []          # deduped extras in display order
+        self.fleet_filaments_ok = False    # True only when the latest fetch succeeded
+        self.fleet_filament_specs = {}     # label -> {"density", "diameter", "default_weight"}; never cleared
+        self._fleet_catalog_fetching = False
+        if self.fleet_daemon_url:
+            self._start_fleet_filament_refresh()
 
         self.speeds = ['1', '2', '5', '25']
         self.distances = ['5', '10', '15', '25']
@@ -215,6 +234,8 @@ class Panel(ScreenPanel):
 
     def activate(self):
         self.enable_buttons(self._printer.state in ("ready", "paused"))
+        if self.fleet_daemon_url:
+            self._start_fleet_filament_refresh()
 
     def process_update(self, action, data):
         if action == "notify_gcode_response":
@@ -324,22 +345,36 @@ class Panel(ScreenPanel):
             self.labels[x]['box'].get_style_context().remove_class("filament_sensor_detected")
 
     def open_filament_selection(self, widget, run_load_macro=False):
-        # List of filament types including a custom option - updated to 5 preset types
-        filament_types = ["PETG-CF", "PA-CF", "TPU", "PA-GF (Natural)", "PA-GF (Dark Grey)", "Custom"]
+        # Hardcoded presets always come first.
+        preset_types = ["PETG-CF", "PA-CF", "TPU", "PA-GF (Natural)", "PA-GF (Dark Grey)"]
+
+        # Extra materials from the fleet filament catalog, only when fleet is
+        # configured and the last fetch succeeded. Uses the cached result so
+        # the dialog never waits on the network; kick a refresh for next time.
+        fleet_extras = []
+        if self.fleet_daemon_url:
+            if self.fleet_filaments_ok:
+                fleet_extras = list(self.fleet_filaments)   # snapshot
+            self._start_fleet_filament_refresh()
+
+        # (label, css class, kind) — presets, fleet extras, then Custom last so
+        # "Custom" and the bottom-row "Scan Spool QR" stay the final two options.
+        entries = [(t, "color1", "preset") for t in preset_types]
+        entries += [(spec["label"], "color2", "fleet") for spec in fleet_extras]
+        entries.append(("Custom", "color1", "custom"))
 
         # Create the dialog for selecting filament types
         dialog = ClickOutsideDialog(title="Select Filament Type",
                                     transient_for=widget.get_toplevel(),
                                     flags=Gtk.DialogFlags.MODAL)
-        dialog.set_default_size(600, 400)  # Increased height for extra row
 
-        current_x, current_y = dialog.get_position()
-        dialog.move(current_x, current_y - 80)  
-
-        # Create a grid layout to place the buttons
+        # Create a grid layout to place the buttons. Rows are NOT homogeneous:
+        # each keeps its natural 150px(+margin) height so the grid can be
+        # taller than the viewport and scroll, instead of stretching/collapsing.
         grid = Gtk.Grid()
         grid.set_column_homogeneous(True)
-        grid.set_row_homogeneous(True)
+        grid.set_row_homogeneous(False)
+        grid.set_valign(Gtk.Align.START)
         grid.set_column_spacing(10)
         grid.set_row_spacing(10)
         grid.set_margin_start(10)
@@ -347,24 +382,34 @@ class Panel(ScreenPanel):
         grid.set_margin_top(10)
         grid.set_margin_bottom(10)
 
-        # Create buttons for each filament type and add them to the grid
-        for i, filament in enumerate(filament_types):
-            button = Gtk.Button(label=filament)
-            button.get_style_context().add_class("color1")
+        # Create buttons for each entry and add them to the grid
+        for i, (label, css_class, kind) in enumerate(entries):
+            button = Gtk.Button(label=label)
+            button.get_style_context().add_class(css_class)
             button.set_size_request(150, 150)
-            if filament == "Custom":
+            if kind == "fleet":
+                # Fleet material names can be long: wrap to two lines, then ellipsize.
+                lbl = button.get_child()
+                if isinstance(lbl, Gtk.Label):
+                    lbl.set_line_wrap(True)
+                    lbl.set_line_wrap_mode(Pango.WrapMode.WORD_CHAR)
+                    lbl.set_justify(Gtk.Justification.CENTER)
+                    lbl.set_lines(2)
+                    lbl.set_ellipsize(Pango.EllipsizeMode.END)
+                    lbl.set_max_width_chars(12)
+            if kind == "custom":
                 button.connect("clicked", self.open_custom_filament_dialog, dialog, run_load_macro)
             else:
                 # Check if spool_tracker is enabled to decide workflow
                 if self.has_spool_tracker:
-                    button.connect("clicked", self.open_weight_entry_dialog, filament, dialog, run_load_macro)
+                    button.connect("clicked", self.open_weight_entry_dialog, label, dialog, run_load_macro)
                 else:
-                    button.connect("clicked", self.set_filament_type_original, filament, dialog, run_load_macro)
+                    button.connect("clicked", self.set_filament_type_original, label, dialog, run_load_macro)
             grid.attach(button, i % 3, i // 3, 1, 1)  # Arrange buttons in 3 columns
 
         # Add bottom-row button (only if spool_tracker available)
         if self.has_spool_tracker:
-            next_row = (len(filament_types) + 2) // 3  # Next row after filament buttons
+            next_row = (len(entries) + 2) // 3  # Next row after filament buttons
             if self.fleet_daemon_url:
                 # QR scan replaces "Update Weight Only" — QR lookup provides the weight
                 qr_button = Gtk.Button(label="Scan Spool QR")
@@ -379,9 +424,36 @@ class Panel(ScreenPanel):
                 weight_button.connect("clicked", self.open_weight_only_dialog, dialog)
                 grid.attach(weight_button, 0, next_row, 3, 1)
 
-        # Add the grid to the dialog content area and show all
+        # Scrollable container. A ScrolledWindow (propagate_natural_height left
+        # False) reports a minimum height independent of its child, so the
+        # dialog's minimum no longer grows with the number of rows and the
+        # explicit size below is honoured. Previously the bare grid's minimum
+        # (3 rows ≈ 530px with button margins) overrode set_default_size and
+        # the dialog ran off the screen.
+        scroll = self._gtk.ScrolledWindow()
+        scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        scroll.add(grid)
+
+        # Size the dialog to its content, capped to the screen.
+        rows = (len(entries) + 2) // 3 + (1 if self.has_spool_tracker else 0)
+        cell_h = 150 + 2 * int(round(0.3 * self._gtk.font_size))   # button CSS margin .3em top+bottom
+        content_h = rows * cell_h + (rows - 1) * 10 + 20              # + row spacing + grid margins
+        dialog_w = min(600, self._screen.width - 40)
+        dialog_h = min(content_h, self._screen.height - 40)
+        dialog.set_default_size(dialog_w, dialog_h)
+        dialog.set_size_request(dialog_w, dialog_h)
+        scroll.set_min_content_height(max(dialog_h - 20, 100))
+
         content_area = dialog.get_content_area()
-        content_area.add(grid)
+        content_area.pack_start(scroll, True, True, 0)
+
+        # Keep the upward nudge (the weight/custom dialogs position themselves
+        # relative to this one) but clamp so the dialog always stays on screen.
+        current_x, current_y = dialog.get_position()
+        x = max(0, min(current_x, self._screen.width - dialog_w))
+        y = max(0, min(current_y - 80, self._screen.height - dialog_h))
+        dialog.move(x, y)
+
         dialog.show_all()
 
     def open_weight_entry_dialog(self, widget, filament_type, parent_dialog, run_load_macro=False):
@@ -391,8 +463,8 @@ class Panel(ScreenPanel):
         # Close the parent dialog
         parent_dialog.destroy()
 
-        # Get default weight for this filament type
-        default_weight = self.spoolman_filament_mapping[filament_type]["default_weight"]
+        # Get default weight for this filament type (preset, fleet material, or fallback)
+        default_weight = self._default_weight_for(filament_type)
 
         # Get the toplevel window (parent window) for the dialog
         parent_window = widget.get_toplevel()
@@ -651,8 +723,10 @@ class Panel(ScreenPanel):
         self.process_filament_selection(filament_type, weight, run_load_macro)
 
     def process_filament_selection(self, filament_type, weight, run_load_macro=False):
-            # Determine moonraker filament name (PA-GF variants both become PA-GF)
-            if filament_type.startswith("PA-GF"):
+            # Determine moonraker filament name (the two PA-GF presets both become
+            # PA-GF; any other name — including a fleet material such as
+            # "PA-GF12" — is sent as-is so it keeps its own specs)
+            if filament_type in PA_GF_PRESET_LABELS:
                 moonraker_filament = "PA-GF"
             else:
                 moonraker_filament = filament_type
@@ -677,8 +751,16 @@ class Panel(ScreenPanel):
                 handle_moonraker_response
             )
 
-            # Handle spool_tracker workflow (much simpler than spoolman)
-            self.handle_spool_tracker_workflow(moonraker_filament, weight)
+            # Handle spool_tracker workflow (much simpler than spoolman). A fleet
+            # catalog material carries its density/diameter so Moonraker can
+            # register it as a custom filament; presets are Moonraker built-ins.
+            fleet_spec = self.fleet_filament_specs.get(filament_type)
+            if fleet_spec:
+                self.handle_spool_tracker_workflow(
+                    moonraker_filament, weight, fleet_spec["density"], fleet_spec["diameter"]
+                )
+            else:
+                self.handle_spool_tracker_workflow(moonraker_filament, weight)
 
             # Notify fleet_daemon to unload any spool on this printer (manual change = no QR)
             if self.fleet_daemon_url:
@@ -960,6 +1042,104 @@ class Panel(ScreenPanel):
             logging.warning(f"Fleet daemon spool unload error: {e}")
             self._save_pending_spool("unload", "", hostname)
 
+    # ── Fleet filament catalog (extra presets in the filament dialog) ──
+
+    def _start_fleet_filament_refresh(self):
+        """Refresh the fleet filament catalog in the background (never blocks).
+        No-op without a fleet URL or while a fetch is already in flight."""
+        if not self.fleet_daemon_url or self._fleet_catalog_fetching:
+            return
+        self._fleet_catalog_fetching = True
+        threading.Thread(target=self._fetch_fleet_filaments_bg, daemon=True).start()
+
+    def _fetch_fleet_filaments_bg(self):
+        """Worker thread: GET /spool/filaments, then hand the result to the GTK
+        thread. Any failure (unreachable, timeout, non-200, bad JSON) marks the
+        catalog unavailable so the dialog falls back to the hardcoded presets.
+        Deliberately silent (no popup): this runs on panel init and on every
+        dialog open, and the no-fleet experience must look exactly like before."""
+        extras, ok = None, False
+        try:
+            resp = requests.get(f"{self.fleet_daemon_url}/spool/filaments", timeout=3)
+            if resp.status_code == 200:
+                rows = resp.json()
+                if isinstance(rows, list):
+                    extras = self._build_fleet_extras(rows)
+                    ok = True
+                    logging.info(f"[Fleet] Filament catalog: {len(rows)} rows, {len(extras)} extra materials")
+                else:
+                    logging.warning("[Fleet] Filament catalog: unexpected response shape")
+            else:
+                logging.warning(f"[Fleet] Filament catalog HTTP {resp.status_code}")
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            logging.warning(f"[Fleet] Cannot fetch filament catalog (fleet offline?): {e}")
+        except Exception as e:
+            logging.error(f"[Fleet] Filament catalog fetch error: {e}")
+        finally:
+            self._fleet_catalog_fetching = False
+        GLib.idle_add(self._apply_fleet_filaments, extras, ok)
+
+    def _apply_fleet_filaments(self, extras, ok):
+        """GTK thread: publish a fetch result. On failure the extras list is
+        left alone but gated off by fleet_filaments_ok; specs are never cleared
+        so a weight keypad already open for a fleet material still resolves."""
+        self.fleet_filaments_ok = ok
+        if ok:
+            self.fleet_filaments = extras
+            for spec in extras:
+                self.fleet_filament_specs[spec["label"]] = spec
+        return False
+
+    @staticmethod
+    def _build_fleet_extras(rows):
+        """Turn GET /spool/filaments rows into dialog entries: one per distinct
+        material (case/whitespace-insensitive), first-registered wins, skipping
+        materials already covered by the hardcoded presets. Pure function."""
+        def _positive(value):
+            try:
+                v = float(value)
+            except (TypeError, ValueError):
+                return None
+            return v if v > 0 else None
+
+        extras = {}
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            material = (row.get("material") or "").strip()
+            if not material:
+                continue
+            key = material.upper()
+            if key in FLEET_PRESET_MATERIALS:
+                continue
+            spec = extras.get(key)
+            if spec is None:
+                spec = {"label": material, "density": None, "diameter": None, "default_weight": None}
+                extras[key] = spec
+            for field, src in (("density", "density"), ("diameter", "diameter"), ("default_weight", "weight")):
+                if spec[field] is None:
+                    spec[field] = _positive(row.get(src))
+
+        result = []
+        for spec in extras.values():
+            spec["density"] = spec["density"] if spec["density"] is not None else 0.0
+            spec["diameter"] = spec["diameter"] if spec["diameter"] is not None else 1.75
+            weight = spec["default_weight"] if spec["default_weight"] is not None else 3000
+            spec["default_weight"] = int(weight) if float(weight).is_integer() else weight
+            result.append(spec)
+        return result
+
+    def _default_weight_for(self, filament_type):
+        """Keypad prefill: hardcoded preset weight, else the fleet catalog's
+        weight for that material, else 3000 g."""
+        mapping = self.spoolman_filament_mapping.get(filament_type)
+        if mapping:
+            return mapping["default_weight"]
+        spec = self.fleet_filament_specs.get(filament_type)
+        if spec and spec.get("default_weight"):
+            return spec["default_weight"]
+        return 3000
+
     @staticmethod
     def _save_pending_spool(action, qr_code, printer_hostname):
         """Save a spool load/unload action to the pending queue file."""
@@ -1085,8 +1265,8 @@ class Panel(ScreenPanel):
         # Close the dialog when a filament type is selected
         dialog.destroy()
 
-        # Determine moonraker filament name (PA-GF variants both become PA-GF)
-        if filament_type.startswith("PA-GF"):
+        # Determine moonraker filament name (the two PA-GF presets both become PA-GF)
+        if filament_type in PA_GF_PRESET_LABELS:
             moonraker_filament = "PA-GF"
         else:
             moonraker_filament = filament_type
