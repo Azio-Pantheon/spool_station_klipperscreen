@@ -53,6 +53,9 @@ PRINTER_BASE_STATUS_OBJECTS = [
     'machine_state'
 ]
 
+# print_stats states that should reopen job_status (and re-arm QR scan) on init/reconnect
+RESUME_JOB_STATES = {"complete", "error", "cancelled"}
+
 klipperscreendir = pathlib.Path(__file__).parent.resolve()
 
 
@@ -133,6 +136,7 @@ class KlipperScreen(Gtk.Window):
         self.dialogs = []
         self.confirm = None
         self.panels_reinit = []
+        self.resume_job_panel = False
         self.last_popup_time = datetime.now()
 
         configfile = os.path.normpath(os.path.expanduser(args.configfile))
@@ -755,6 +759,7 @@ class KlipperScreen(Gtk.Window):
             self.show_panel("extrude", _("Extrude"))
 
     def state_printing(self):
+        self.resume_job_panel = False
         self.close_screensaver()
         for dialog in self.dialogs:
             self.gtk.remove_dialog(dialog)
@@ -767,6 +772,13 @@ class KlipperScreen(Gtk.Window):
         if not self.initialized:
             logging.debug("Printer not initialized yet")
             self.printer.state = "not ready"
+            return
+        if self.resume_job_panel:
+            # One-shot: a finished job was found during init; reopen job_status
+            # so the QR-scan wait survives KlipperScreen/Moonraker restarts.
+            self.resume_job_panel = False
+            logging.info("Resuming job_status panel for finished job")
+            self.state_printing()
             return
         self.files.refresh_files()
         self.show_panel("main_menu", None, remove_all=True, items=self._config.get_menu_items("__main"))
@@ -1092,6 +1104,12 @@ class KlipperScreen(Gtk.Window):
         self.initialized = True
         self.reinit_count = 0
         self.initializing = False
+        # Fleet: if Klipper is still sitting on a finished job (KlipperScreen or
+        # Moonraker restarted mid QR-scan wait), route back to job_status once.
+        ps_state = data['result']['status'].get('print_stats', {}).get('state')
+        ks_printer_cfg = self._config.get_printer_config(self.connected_printer)
+        fleet_url = ks_printer_cfg.get("fleet_daemon_url", "").strip('" ') if ks_printer_cfg else ""
+        self.resume_job_panel = bool(fleet_url) and ps_state in RESUME_JOB_STATES
         self.printer.process_update(data['result']['status'])
         self.log_notification("Printer Initialized", 1)
         return False
