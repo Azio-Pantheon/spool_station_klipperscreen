@@ -4,6 +4,7 @@ import re
 import os
 import socket
 import threading
+from datetime import datetime, timezone
 import gi
 
 gi.require_version("Gtk", "3.0")
@@ -987,10 +988,12 @@ class Panel(ScreenPanel):
         self.shared_printer_config.filament = moonraker_filament
         self.update_button_labels()
 
-        # Notify fleet_daemon directly so it updates loaded_on_printer immediately
+        # Notify fleet_daemon directly so it updates loaded_on_printer immediately.
+        # Capture the load time here so a queued/replayed notification keeps it.
+        loaded_at = datetime.now(timezone.utc).isoformat()
         threading.Thread(
             target=self._notify_fleet_spool_load,
-            args=(qr_code,),
+            args=(qr_code, loaded_at),
             daemon=True,
         ).start()
 
@@ -1006,23 +1009,25 @@ class Panel(ScreenPanel):
             level=1,
         )
 
-    def _notify_fleet_spool_load(self, qr_code):
+    def _notify_fleet_spool_load(self, qr_code, loaded_at=None):
         """Notify fleet_daemon that a spool has been loaded on this printer."""
         hostname = self._get_printer_hostname()
+        if loaded_at is None:
+            loaded_at = datetime.now(timezone.utc).isoformat()
         try:
             resp = requests.post(
                 f"{self.fleet_daemon_url}/spool/load",
-                json={"qr_code": qr_code, "printer_hostname": hostname},
+                json={"qr_code": qr_code, "printer_hostname": hostname, "loaded_at": loaded_at},
                 timeout=5,
             )
             if resp.status_code == 200:
                 logging.info(f"Fleet daemon notified: spool {qr_code} loaded on {hostname}")
             else:
                 logging.warning(f"Fleet daemon spool load failed: {resp.status_code} {resp.text[:200]}")
-                self._save_pending_spool("load", qr_code, hostname)
+                self._save_pending_spool("load", qr_code, hostname, loaded_at)
         except Exception as e:
             logging.warning(f"Fleet daemon spool load error: {e}")
-            self._save_pending_spool("load", qr_code, hostname)
+            self._save_pending_spool("load", qr_code, hostname, loaded_at)
 
     def _notify_fleet_spool_unload(self):
         """Notify fleet_daemon to unload any spool on this printer (manual filament change)."""
@@ -1141,7 +1146,7 @@ class Panel(ScreenPanel):
         return 3000
 
     @staticmethod
-    def _save_pending_spool(action, qr_code, printer_hostname):
+    def _save_pending_spool(action, qr_code, printer_hostname, loaded_at=None):
         """Save a spool load/unload action to the pending queue file."""
         pending = []
         if os.path.exists(SPOOL_PENDING_FILE):
@@ -1150,11 +1155,14 @@ class Panel(ScreenPanel):
                     pending = json.load(f)
             except Exception:
                 pending = []
-        pending.append({
+        entry = {
             "action": action,
             "qr_code": qr_code,
             "printer_hostname": printer_hostname,
-        })
+        }
+        if loaded_at:
+            entry["loaded_at"] = loaded_at
+        pending.append(entry)
         try:
             with open(SPOOL_PENDING_FILE, "w") as f:
                 json.dump(pending, f)
@@ -1185,6 +1193,8 @@ class Panel(ScreenPanel):
                 "qr_code": entry.get("qr_code", ""),
                 "printer_hostname": entry.get("printer_hostname", ""),
             }
+            if entry.get("loaded_at"):
+                payload["loaded_at"] = entry["loaded_at"]
             try:
                 resp = requests.post(url, json=payload, timeout=10)
                 if resp.status_code == 200:
