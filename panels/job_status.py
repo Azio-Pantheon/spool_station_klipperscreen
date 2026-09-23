@@ -50,6 +50,7 @@ class Panel(ScreenPanel):
         self.qr_scan_active = False
         self.qr_scan_submitted = False
         self.qr_scanned_count = 0
+        self._prime_layout_sig = None
         self.fleet_daemon_url = (
             self.ks_printer_cfg.get("fleet_daemon_url", "").strip('" ')
             if self.ks_printer_cfg else ""
@@ -514,8 +515,11 @@ class Panel(ScreenPanel):
             return
 
         if "machine_state" in data and self.state not in ("printing", "paused"):
-            # is_primed / is_fleet_worker changed: swap prime/restart accordingly
-            self.show_buttons_for_state()
+            # Swap prime/restart only when the values driving the layout really
+            # changed. Rebuilding the row on every machine_state push destroys
+            # the buttons mid-click and makes the panel feel unresponsive.
+            if self._prime_layout_signature() != self._prime_layout_sig:
+                self.show_buttons_for_state()
 
         for x in self._printer.get_temp_devices():
             if x in data:
@@ -793,6 +797,7 @@ class Panel(ScreenPanel):
             if self.state != "cancelling":
                 self.buttons['button_grid'].attach(self.buttons['menu'], 3, 0, 1, 1)
                 self.can_close = True
+        self._prime_layout_sig = self._prime_layout_signature()
         self.content.show_all()
 
     def show_file_thumbnail(self):
@@ -1263,6 +1268,10 @@ class Panel(ScreenPanel):
             return int(getattr(self._screen.shared_printer_config, "is_fleet_worker", 0)) == 1
         except (TypeError, ValueError):
             return False
+
+    def _prime_layout_signature(self):
+        cfg = self._screen.shared_printer_config
+        return (self._is_fleet_worker(), cfg.enable_prime, cfg.is_primed)
 
     def handle_restart_button(self, widget):
         # Route the restart through the same purge/prime/compatibility/filament
