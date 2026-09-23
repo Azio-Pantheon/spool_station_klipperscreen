@@ -382,6 +382,7 @@ class Panel(ScreenPanel):
             'fine_tune': self._gtk.Button("fine-tune", _("Fine Tuning"), "color4"),
             'menu': self._gtk.Button("complete", _("Main Menu"), "color4"),
             'pause': self._gtk.Button("pause", _("Pause"), "color1"),
+            'prime': self._gtk.Button("complete", _("Prime Printer"), "color1"),
             'restart': self._gtk.Button("refresh", _("Restart"), "color3"),
             'resume': self._gtk.Button("resume", _("Resume"), "color1"),
             'save_offset_probe': self._gtk.Button("home-z", _("Save Z") + "\n" + "Probe", "color1"),
@@ -393,6 +394,7 @@ class Panel(ScreenPanel):
             "panel": "fine_tune", "name": _("Fine Tuning")})
         self.buttons['menu'].connect("clicked", self.close_panel)
         self.buttons['pause'].connect("clicked", self.pause)
+        self.buttons['prime'].connect("clicked", self.prime_print)
         self.buttons['restart'].connect("clicked", self.handle_restart_button)
         self.buttons['resume'].connect("clicked", self.resume)
         self.buttons['save_offset_probe'].connect("clicked", self.save_offset, "probe")
@@ -510,6 +512,10 @@ class Panel(ScreenPanel):
             self.update_file_metadata()
         elif action != "notify_status_update":
             return
+
+        if "machine_state" in data and self.state not in ("printing", "paused"):
+            # is_primed / is_fleet_worker changed: swap prime/restart accordingly
+            self.show_buttons_for_state()
 
         for x in self._printer.get_temp_devices():
             if x in data:
@@ -772,7 +778,14 @@ class Panel(ScreenPanel):
                 self.buttons['button_grid'].attach(Gtk.Label(), 0, 0, 1, 1)
                 self.buttons['button_grid'].attach(Gtk.Label(), 1, 0, 1, 1)
 
-            if self.filename:
+            if self._is_fleet_worker():
+                # Workers never restart jobs manually: the fleet daemon schedules
+                # the next job once the printer is primed and back in standby.
+                cfg = self._screen.shared_printer_config
+                if cfg.enable_prime == 1 and cfg.is_primed != 1:
+                    self.buttons['button_grid'].attach(self.buttons['prime'], 2, 0, 1, 1)
+                    self.enable_button("prime")
+            elif self.filename:
                 self.buttons['button_grid'].attach(self.buttons['restart'], 2, 0, 1, 1)
                 self.enable_button("restart")
             else:
@@ -1196,7 +1209,7 @@ class Panel(ScreenPanel):
     def prime_print(self, widget):
 
         buttons = [
-            {"name": _("Prime and Restart"), "response": Gtk.ResponseType.OK},
+            {"name": _("Prime"), "response": Gtk.ResponseType.OK},
             {"name": _("Cancel"), "response": Gtk.ResponseType.CANCEL, "style": 'dialog-error'}
         ]
 
@@ -1237,30 +1250,39 @@ class Panel(ScreenPanel):
     def prime_print_response(self, dialog, response_id):
         self._gtk.remove_dialog(dialog)
         if response_id == Gtk.ResponseType.OK:
-            # Operator confirmed the bed is clear; the print start that follows
-            # makes Moonraker clear is_primed again, so no state write is needed here.
-            #def restart(self, widget):
-            if self.filename:
-                self.disable_button("restart")
-                if self.state == "error":
-                    self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
-                self._screen._ws.klippy.print_start(self.filename)
-                logging.info(f"Starting print: {self.filename}")
-                self.new_print()
-            else:
-                logging.info(f"Could not restart {self.filename}")
-            
+            logging.info("Starting prime")
+            # Clear the finished job in Klipper so print_stats returns to standby
+            # without the operator having to leave through the Main Menu first,
+            # then record the confirmation in Moonraker.
+            self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
+            self._screen.set_prime_state(1)
+            self._screen.state_ready(wait=False)
+
+    def _is_fleet_worker(self):
+        try:
+            return int(getattr(self._screen.shared_printer_config, "is_fleet_worker", 0)) == 1
+        except (TypeError, ValueError):
+            return False
 
     def handle_restart_button(self, widget):
-        if self._screen.shared_printer_config.enable_prime == 1:
-            if self._screen.shared_printer_config.is_primed == 1:
-                # If ready, restart
+        # Route the restart through the same purge/prime/compatibility/filament
+        # checks and confirm dialog as starting the file from the file browser.
+        if not self.filename:
+            logging.info("Could not restart, no filename")
+            return
+        if self.state == "error":
+            self._screen._ws.klippy.gcode_script("SDCARD_RESET_FILE")
+        print_panel = self._screen.panels.get("print")
+        if print_panel is None:
+            try:
+                print_panel = self._screen._load_panel("print").Panel(
+                    self._screen, _("Print"), self._screen.shared_printer_config)
+                self._screen.panels["print"] = print_panel
+            except Exception:
+                logging.exception("Unable to load print panel for restart checks, restarting directly")
                 self.restart(widget)
-            else:
-                # If not ready, prompt user for confirmation
-                self.prime_print(widget)
-        else:
-            self.restart(widget)
+                return
+        print_panel.confirm_compatible_print(widget, self.filename)
 
     def periodic_title_refresh(self):
         """Refresh title every 5 seconds during printing to update spoolman weight"""
