@@ -53,6 +53,12 @@ class Panel(ScreenPanel):
         self.qr_scan_active = False
         self.qr_scan_buffer = ""
         self._active_run_load_macro = False
+        # Change detection for status pushes: Moonraker injects the nozzle and
+        # spool fields into every toolhead update (several per second), so the
+        # labels and the title are only rebuilt when a value actually changes.
+        self._nozzle_state = {}
+        self._last_remaining_weight = None
+        self._last_title = None
 
         # Fleet filament catalog (GET {fleet_daemon_url}/spool/filaments).
         # Extra materials from fleet are appended to the hardcoded presets in
@@ -234,6 +240,9 @@ class Panel(ScreenPanel):
             self.buttons[button].set_sensitive(enable)
 
     def activate(self):
+        # Another panel may have written the shared title label meanwhile, so
+        # the next status push must be allowed to set it again.
+        self._last_title = None
         self.enable_buttons(self._printer.state in ("ready", "paused"))
         if self.fleet_daemon_url:
             self._start_fleet_filament_refresh()
@@ -269,13 +278,23 @@ class Panel(ScreenPanel):
                 n = self._printer.get_tool_number(self.current_extruder)
                 self.labels["current_extruder"].set_image(self._gtk.Image(f"extruder-{n}"))
 
-        if "toolhead" in data and any(k in data["toolhead"] for k in ("nozzle_type", "nozzle_life", "remaining_nozzle_life", "nozzle_size")):
-            th = data["toolhead"]
+        th = data.get("toolhead") or {}
+        nozzle_update = {k: th[k] for k in ("nozzle_type", "nozzle_size", "nozzle_life", "remaining_nozzle_life") if k in th}
+        if nozzle_update and any(self._nozzle_state.get(k) != v for k, v in nozzle_update.items()):
+            self._nozzle_state.update(nozzle_update)
             if "nozzle_type" in th:
                 self.shared_printer_config.nozzle_type = th["nozzle_type"]
             if "nozzle_size" in th:
                 self.shared_printer_config.nozzle = th["nozzle_size"]
-            self.update_button_labels()
+            self.update_button_labels()  # also refreshes the title
+        elif "remaining_weight" in th:
+            try:
+                remaining = round(float(th["remaining_weight"]), 1)
+            except (TypeError, ValueError):
+                remaining = None
+            if remaining is not None and remaining != self._last_remaining_weight:
+                self._last_remaining_weight = remaining
+                self.refresh_title()
            
         for x in self._printer.get_filament_sensors():
             if x in data:
@@ -2189,53 +2208,33 @@ class Panel(ScreenPanel):
 
     def _get_spoolman_weight_for_title(self, base_title, suffix):
         """Get spool_tracker weight and update the title"""
-        
+        weight_text = ""
         try:
-            # Check if apiclient is available
-            if not hasattr(self._screen, 'apiclient') or self._screen.apiclient is None:
-                # No spool_tracker, just add suffix and update
-                final_title = base_title + suffix
-                self._screen.base_panel.titlelbl.set_label(final_title)
-                logging.info(f"Title updated to: {final_title}")
-                return
-            
-            # Get spool tracker status
-            result = self._screen.apiclient.send_request("server/spool_tracker/status")
-            if not result:
-                # No spool_tracker response, just add suffix and update
-                final_title = base_title + suffix
-                self._screen.base_panel.titlelbl.set_label(final_title)
-                logging.info(f"Title updated to: {final_title}")
-                return
-            
-            tracker_data = result.get("result", {})
-            can_track = tracker_data.get("can_track", False)
-            
-            if not can_track:
-                # No tracking available
-                final_title = base_title + " weight untracked" + suffix
-                self._screen.base_panel.titlelbl.set_label(final_title)
-                logging.info(f"Title updated to: {final_title}")
-            else:
-                # Get remaining weight from tracker
-                weights = tracker_data.get("weights", {})
-                remaining_weight = weights.get("remaining_weight", 0)
-                
-                if remaining_weight > 0:
-                    weight_text = f" {round(remaining_weight, 1)}g"
-                else:
+            result = None
+            if getattr(self._screen, 'apiclient', None) is not None:
+                result = self._screen.apiclient.send_request("server/spool_tracker/status")
+            if result:
+                tracker_data = result.get("result", {})
+                if not tracker_data.get("can_track", False):
                     weight_text = " weight untracked"
-                    
-                final_title = base_title + weight_text + suffix
-                self._screen.base_panel.titlelbl.set_label(final_title)
-                logging.info(f"Title updated to: {final_title}")
-                
+                else:
+                    remaining_weight = tracker_data.get("weights", {}).get("remaining_weight", 0)
+                    if remaining_weight > 0:
+                        weight_text = f" {round(remaining_weight, 1)}g"
+                    else:
+                        weight_text = " weight untracked"
         except Exception as e:
             logging.debug(f"Error requesting spool_tracker data: {e}")
-            # Fallback without weight info
-            final_title = base_title + suffix
-            self._screen.base_panel.titlelbl.set_label(final_title)
-            logging.info(f"Title updated to: {final_title}")
+        self._set_title(base_title + weight_text + suffix)
+
+    def _set_title(self, title):
+        # The title is rebuilt on every status push; only touch the widget and
+        # the log when it actually changes.
+        if title == self._last_title:
+            return
+        self._last_title = title
+        self._screen.base_panel.titlelbl.set_label(title)
+        logging.info(f"Title updated to: {title}")
 
 
     def check_spool_tracker_availability(self):
