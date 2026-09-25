@@ -4,6 +4,7 @@ import re
 import os
 import socket
 import threading
+import time
 from datetime import datetime, timezone
 import gi
 
@@ -53,6 +54,10 @@ class Panel(ScreenPanel):
         self.qr_scan_active = False
         self.qr_scan_buffer = ""
         self._active_run_load_macro = False
+        # Worker scan-first flow: waiting dialog + fleet relay polling state
+        self._scan_wait_dialog = None
+        self._scan_relay_token = 0
+        self._relayed_qr = None
         # Change detection for status pushes: Moonraker injects the nozzle and
         # spool fields into every toolhead update (several per second), so the
         # labels and the title are only rebuilt when a value actually changes.
@@ -113,7 +118,7 @@ class Panel(ScreenPanel):
             "name": "Spoolman",
             "panel": "spoolman"
         })
-        self.buttons['set_filament'].connect("clicked", self.open_filament_selection)
+        self.buttons['set_filament'].connect("clicked", self._open_filament_flow)
         self.buttons['set_nozzle'].connect("clicked", self.open_nozzle_selection)
         self.load_filament_nozzle()
 
@@ -348,7 +353,7 @@ class Panel(ScreenPanel):
             if not self.load_filament:
                 self._screen.show_popup_message("Macro LOAD_FILAMENT not found")
             else:
-                self.open_filament_selection(widget, run_load_macro=True)
+                self._open_filament_flow(widget, run_load_macro=True)
 
     def enable_disable_fs(self, switch, gparams, name, x):
         if switch.get_active():
@@ -794,6 +799,145 @@ class Panel(ScreenPanel):
                 self._screen._send_action(None, "printer.gcode.script",
                                         {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
 
+    # ── Worker scan-first flow (Set Filament / Load on a fleet worker) ──
+
+    def _is_fleet_worker(self):
+        try:
+            return int(getattr(self.shared_printer_config, "is_fleet_worker", 0)) == 1
+        except (TypeError, ValueError):
+            return False
+
+    def _open_filament_flow(self, widget, run_load_macro=False):
+        """Set Filament / Load entry point. On a fleet worker (with fleet URL and
+        spool_tracker) open the 'Waiting for scan' dialog; otherwise the
+        original material-selection dialog."""
+        if self._is_fleet_worker() and self.fleet_daemon_url and self.has_spool_tracker:
+            self._open_scan_wait_dialog(widget, run_load_macro)
+        else:
+            self.open_filament_selection(widget, run_load_macro=run_load_macro)
+
+    def _open_scan_wait_dialog(self, widget, run_load_macro):
+        """Modal 'Waiting for scan…' dialog. Listens to the USB scanner (keys go
+        to the modal dialog, so it forwards them to handle_key_press) and polls
+        the fleet daemon for a scan relayed from Scanner Lite. 'Manual Load'
+        falls back to the original selection dialog."""
+        if self._scan_wait_dialog is not None:
+            self._scan_wait_dialog.destroy()
+        self._active_run_load_macro = run_load_macro
+        self._relayed_qr = None
+        self.qr_scan_active = True
+        self.qr_scan_buffer = ""
+
+        dialog = ClickOutsideDialog(
+            title="Load Filament" if run_load_macro else "Set Filament",
+            transient_for=widget.get_toplevel(),
+            flags=Gtk.DialogFlags.MODAL,
+        )
+        dialog_w = min(600, self._screen.width - 40)
+        dialog_h = min(420, self._screen.height - 40)
+        dialog.set_default_size(dialog_w, dialog_h)
+
+        vbox = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=15)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(vbox, f"set_margin_{side}")(20)
+
+        spinner = Gtk.Spinner()
+        spinner.set_size_request(64, 64)
+        spinner.start()
+        vbox.pack_start(spinner, False, False, 10)
+
+        title = Gtk.Label(label="Waiting for scan…")
+        title.modify_font(Pango.FontDescription("Sans Bold 22"))
+        vbox.pack_start(title, False, False, 0)
+
+        hint = Gtk.Label(label="Scan a spool QR code on this printer,\nor use Load Spool in Scanner Lite.")
+        hint.set_justify(Gtk.Justification.CENTER)
+        hint.modify_font(Pango.FontDescription("Sans 14"))
+        vbox.pack_start(hint, False, False, 0)
+
+        btn_box = Gtk.Box(spacing=20)
+        manual_btn = Gtk.Button(label="Manual Load")
+        manual_btn.get_style_context().add_class("color1")
+        manual_btn.set_size_request(200, 80)
+        manual_btn.connect("clicked", self._on_scan_wait_manual, dialog, widget, run_load_macro)
+        cancel_btn = Gtk.Button(label="Cancel")
+        cancel_btn.get_style_context().add_class("color2")
+        cancel_btn.set_size_request(200, 80)
+        cancel_btn.connect("clicked", lambda w: dialog.destroy())
+        btn_box.pack_start(manual_btn, True, True, 0)
+        btn_box.pack_start(cancel_btn, True, True, 0)
+        vbox.pack_end(btn_box, False, False, 0)
+
+        dialog.get_content_area().add(vbox)
+        dialog.connect("key-press-event", self._on_scan_wait_key)
+        dialog.connect("destroy", self._on_scan_wait_closed)
+        self._scan_wait_dialog = dialog
+        dialog.show_all()
+        self._start_scan_relay_poll()
+
+    def _on_scan_wait_key(self, widget, event):
+        # The modal dialog owns keyboard focus, so the wedge scanner's keys
+        # never reach screen._key_press_event; route them ourselves.
+        return bool(self.handle_key_press(event))
+
+    def _on_scan_wait_manual(self, button, dialog, widget, run_load_macro):
+        dialog.destroy()
+        self.open_filament_selection(widget, run_load_macro=run_load_macro)
+
+    def _on_scan_wait_closed(self, dialog):
+        if self._scan_wait_dialog is dialog:
+            self._stop_scan_wait()
+
+    def _stop_scan_wait(self):
+        self.qr_scan_active = False
+        self.qr_scan_buffer = ""
+        self._scan_relay_token += 1   # any running poll loop sees a stale token and exits
+        self._scan_wait_dialog = None
+
+    def _start_scan_relay_poll(self):
+        if not self.fleet_daemon_url:
+            return
+        self._scan_relay_token += 1
+        threading.Thread(
+            target=self._scan_relay_poll_loop,
+            args=(self._scan_relay_token,),
+            daemon=True,
+        ).start()
+
+    def _scan_relay_poll_loop(self, token):
+        """Background: claim relayed scans for this printer once a second while
+        the waiting dialog is open. Errors (daemon offline) are ignored — the
+        local scanner path still works."""
+        url = f"{self.fleet_daemon_url}/spool/scan-relay/{self._get_printer_hostname()}/claim"
+        while token == self._scan_relay_token:
+            try:
+                resp = requests.post(url, timeout=3)
+                if resp.status_code == 200:
+                    pending = resp.json().get("pending")
+                    if pending and token == self._scan_relay_token:
+                        GLib.idle_add(self._on_relayed_scan, pending)
+                        return
+            except Exception as e:
+                logging.debug(f"scan-relay poll: {e}")
+            time.sleep(1)
+
+    def _on_relayed_scan(self, record):
+        """GTK thread: a Scanner Lite scan arrived. Show the same confirmation
+        dialog as a local scan; the daemon already sent the lookup payload."""
+        if self._scan_wait_dialog is None:
+            return False
+        qr_code = record.get("qr_code", "")
+        spool = record.get("spool") or {}
+        self._scan_wait_dialog.destroy()
+        self._relayed_qr = qr_code
+        self._show_spool_confirmation(qr_code, {"spool": spool})
+        return False
+
+    def deactivate(self):
+        if self._scan_wait_dialog is not None:
+            self._scan_wait_dialog.destroy()
+        self._stop_scan_wait()
+
     # ── QR Spool Scan Methods ─────────────────────────────────────────
 
     def _on_qr_scan_clicked(self, widget, dialog, run_load_macro):
@@ -826,6 +970,9 @@ class Panel(ScreenPanel):
         elif keyval_name == "Escape":
             self.qr_scan_active = False
             self.qr_scan_buffer = ""
+            if self._scan_wait_dialog is not None:
+                self._scan_wait_dialog.destroy()
+                return True
             return False  # Let Escape propagate to go home
         else:
             char = chr(keyval) if 32 <= keyval < 127 else Gdk.keyval_to_unicode(keyval)
@@ -839,6 +986,9 @@ class Panel(ScreenPanel):
     def _submit_spool_qr(self, qr_code):
         """Disable scan mode and look up the QR code from fleet_daemon in a background thread."""
         self.qr_scan_active = False
+        self._relayed_qr = None
+        if self._scan_wait_dialog is not None:
+            self._scan_wait_dialog.destroy()
         self._screen.show_popup_message(
             f'<span size="24000">Looking up: {GLib.markup_escape_text(qr_code)}</span>',
             level=1,
@@ -958,7 +1108,7 @@ class Panel(ScreenPanel):
         btn_box = Gtk.Box(spacing=20)
         btn_box.set_margin_top(20)
 
-        confirm_btn = Gtk.Button(label="Confirm")
+        confirm_btn = Gtk.Button(label="Load" if self._active_run_load_macro else "Confirm")
         confirm_btn.get_style_context().add_class("color1")
         confirm_btn.set_size_request(200, 80)
         confirm_btn.connect(
@@ -970,6 +1120,9 @@ class Panel(ScreenPanel):
         cancel_btn.get_style_context().add_class("color2")
         cancel_btn.set_size_request(200, 80)
         cancel_btn.connect("clicked", lambda w: dialog.destroy())
+        # Cancel, tap-outside and Escape all destroy the dialog; a relayed
+        # (Scanner Lite) scan that was not confirmed is reported as cancelled.
+        dialog.connect("destroy", self._on_spool_confirm_destroyed)
 
         btn_box.pack_start(confirm_btn, True, True, 0)
         btn_box.pack_start(cancel_btn, True, True, 0)
@@ -978,8 +1131,25 @@ class Panel(ScreenPanel):
         dialog.get_content_area().add(vbox)
         dialog.show_all()
 
+    def _on_spool_confirm_destroyed(self, dialog):
+        """Spool confirmation closed without confirming: tell the daemon so
+        Scanner Lite shows 'cancelled' (confirm clears _relayed_qr first)."""
+        if self._relayed_qr is not None:
+            self._relayed_qr = None
+            threading.Thread(target=self._cancel_scan_relay, daemon=True).start()
+
+    def _cancel_scan_relay(self):
+        try:
+            requests.delete(
+                f"{self.fleet_daemon_url}/spool/scan-relay/{self._get_printer_hostname()}",
+                timeout=5,
+            )
+        except Exception as e:
+            logging.debug(f"scan-relay cancel failed: {e}")
+
     def _confirm_spool_qr(self, widget, dialog, qr_code, material, weight, density, diameter):
         """Register the QR-scanned spool to moonraker's spool_tracker."""
+        self._relayed_qr = None   # before destroy: the destroy handler treats a set value as cancel
         dialog.destroy()
 
         # Map material to moonraker filament type
