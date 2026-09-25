@@ -362,3 +362,20 @@ class MoonrakerApi:
                 "api_key": f"{api_key}"
             },
         )
+
+    # ── Spool station (Moonraker [spool_station] component, server.spool_station.*) ──
+    # All calls are asynchronous: callbacks arrive on the GTK thread via
+    # GLib.idle_add as callback(response, method, params, *args).
+
+    def spool_station_status(self, callback=None, *args):
+        logging.debug("Sending server.spool_station.status")
+        return self._ws.send_method("server.spool_station.status", {}, callback, *args)
+
+    def spool_station_scan(self, code, source="scanner", callback=None, *args):
+        params = {"code": code, "source": source}
+        logging.debug(f"Sending server.spool_station.scan {params}")
+        return self._ws.send_method("server.spool_station.scan", params, callback, *args)
+
+    def spool_station_cancel(self, callback=None, *args):
+        logging.debug("Sending server.spool_station.cancel")
+        return self._ws.send_method("server.spool_station.cancel", {}, callback, *args)

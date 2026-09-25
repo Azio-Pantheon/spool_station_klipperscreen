@@ -122,6 +122,10 @@ class KlipperScreen(Gtk.Window):
     windowed = False
     notification_log = []
     prompt = None
+    # True when the connected [printer] section has device_type: spool_station.
+    # Station mode boots straight into panels/spool_station.py once Moonraker
+    # answers and never initialises or waits for Klipper (it may be absent).
+    is_spool_station = False
 
     def __init__(self, args):
         try:
@@ -265,6 +269,9 @@ class KlipperScreen(Gtk.Window):
             0,
         )
         self.printer = self.printers[ind]["data"]
+        self.is_spool_station = self.printers[ind][name].get("device_type", "printer") == "spool_station"
+        if self.is_spool_station:
+            logging.info(f"{name} is configured as a spool station: Klipper state is ignored")
         self.apiclient = KlippyRest(
             self.printers[ind][name]["moonraker_host"],
             self.printers[ind][name]["moonraker_port"],
@@ -342,7 +349,9 @@ class KlipperScreen(Gtk.Window):
         return import_module(f"panels.{panel}")
 
     def show_panel(self, panel, title, remove_all=False, panel_name=None, **kwargs):
-        if self._ws is not None and self._ws.connected:
+        # Station mode: no HS3 namespace exists and load_machine_state would
+        # rewrite KlipperScreen.conf when it is missing.
+        if self._ws is not None and self._ws.connected and not self.is_spool_station:
             self.load_machine_state()
 
         if panel_name is None:
@@ -766,6 +775,9 @@ class KlipperScreen(Gtk.Window):
         self.show_panel("job_status", _("Printing"), remove_all=True)
 
     def state_ready(self, wait=True):
+        if self.is_spool_station:
+            self.show_home_panel()
+            return
         # Do not return to main menu if completing a job, timeouts/user input will return
         if "job_status" in self._cur_panels and wait:
             return
@@ -781,7 +793,14 @@ class KlipperScreen(Gtk.Window):
             self.state_printing()
             return
         self.files.refresh_files()
-        self.show_panel("main_menu", None, remove_all=True, items=self._config.get_menu_items("__main"))
+        self.show_home_panel()
+
+    def show_home_panel(self):
+        """Show the root panel: the spool station panel in station mode, else the main menu."""
+        if self.is_spool_station:
+            self.show_panel("spool_station", _("Spool Station"), remove_all=True)
+        else:
+            self.show_panel("main_menu", None, remove_all=True, items=self._config.get_menu_items("__main"))
 
     def state_startup(self):
         self.printer_initializing(_("Klipper is attempting to start"))
@@ -816,12 +835,25 @@ class KlipperScreen(Gtk.Window):
         if "printer_select" in self._cur_panels:
             self.show_printer_select()
             return
+        if self.is_spool_station:
+            # Klipper state must never replace the station panel
+            self._remove_all_panels()
+            self.show_home_panel()
+            return
         self._remove_all_panels()
         if self.printer is not None:
             self.printer.change_state(self.printer.state)
 
     def _websocket_callback(self, action, data):
         if self.connecting:
+            return
+        if self.is_spool_station and action in (
+            "notify_klippy_disconnected", "notify_klippy_shutdown", "notify_klippy_ready",
+            "notify_status_update", "notify_gcode_response",
+        ):
+            # Station mode ignores Klipper entirely: no re-init on klippy_ready,
+            # no printer state changes, no gcode responses. Everything else
+            # (notify_spool_station_status, proc stats, ...) reaches process_update.
             return
         if action == "notify_klippy_disconnected":
             self.printer.process_update({'webhooks': {'state': "disconnected"}})
@@ -1004,6 +1036,16 @@ class KlipperScreen(Gtk.Window):
         self.base_panel.set_ks_printer_cfg(self.connected_printer)
 
         self.init_server(state["result"])
+        if self.is_spool_station:
+            # Moonraker is up: that is all a spool station needs. Never call
+            # init_klipper (Klipper may be absent or flapping) and never start
+            # the printer-only fleet flush threads below.
+            self.initialized = True
+            self.reinit_count = 0
+            self.initializing = False
+            self.show_home_panel()
+            self.log_notification(_("Spool station ready"), 1)
+            return False
         # Moonraker is ready, set a loop to init the printer
         result = self.init_klipper(state["result"])
 

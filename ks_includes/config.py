@@ -95,9 +95,24 @@ class KlipperScreenConfig:
             {printer[8:]: {
                 "moonraker_host": self.config.get(printer, "moonraker_host", fallback="127.0.0.1"),
                 "moonraker_port": self.config.get(printer, "moonraker_port", fallback="7125"),
-                "moonraker_api_key": self.config.get(printer, "moonraker_api_key", fallback="").replace('"', '')
+                "moonraker_api_key": self.config.get(printer, "moonraker_api_key", fallback="").replace('"', ''),
+                # "printer" (default) or "spool_station": a spool station boots straight
+                # into the spool registration panel and never waits for Klipper
+                "device_type": self.config.get(printer, "device_type", fallback="printer").strip('" ').lower(),
+                # Optional serial barcode scanner (HID keyboard-wedge scanners need no config)
+                "scanner_serial_port": self.config.get(printer, "scanner_serial_port", fallback="").strip('" '),
+                "scanner_serial_baud": self.config.get(printer, "scanner_serial_baud", fallback="9600").strip('" '),
             }} for printer in printers
         ]
+        for printer in self.printers:
+            name = list(printer)[0]
+            device_type = printer[name]["device_type"]
+            if device_type not in ("printer", "spool_station"):
+                msg = (f'Invalid device_type "{device_type}" in section [printer {name}]\n'
+                       'Expected "printer" or "spool_station"')
+                logging.error(msg)
+                self.errors.append(msg)
+                printer[name]["device_type"] = "printer"
 
         conf_printers_debug = copy.deepcopy(self.printers)
         for printer in conf_printers_debug:
@@ -177,11 +192,11 @@ class KlipperScreenConfig:
                     'moonraker_api_key', 'moonraker_host', 'titlebar_name_type',
                     'screw_positions', 'power_devices', 'titlebar_items', 'z_babystep_values',
                     'extrude_distances', 'extrude_speeds', 'move_distances',
-                    'fleet_daemon_url',
+                    'fleet_daemon_url', 'device_type', 'scanner_serial_port',
                 )
                 numbers = (
                     'moonraker_port', 'move_speed_xy', 'move_speed_z', 'screw_rotation',
-                    'calibrate_x_position', 'calibrate_y_position',
+                    'calibrate_x_position', 'calibrate_y_position', 'scanner_serial_baud',
                 )
             elif section.startswith('preheat '):
                 strs = ('gcode', '')

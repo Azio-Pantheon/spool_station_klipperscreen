@@ -372,7 +372,19 @@ class BasePanel(ScreenPanel):
 
     def set_title(self, title):
         self.titlebar.get_style_context().remove_class("message_popup_error")
-        
+
+        if getattr(self._screen, "is_spool_station", False):
+            # Spool stations run neither [spool_tracker] nor the HS3 config namespace:
+            # the filament/nozzle/weight title decorations below would error (and
+            # block on HTTP) on every panel switch, so use the plain title straight away.
+            if self._weight_timeout_id is not None:
+                GLib.source_remove(self._weight_timeout_id)
+                self._weight_timeout_id = None
+            self._pending_title = title
+            self._current_panel_title = title
+            self._set_title_fallback(title)
+            return
+
         # Check if this is a panel switch or just a refresh
         is_panel_switch = (self._current_panel_title != title)
         

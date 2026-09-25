@@ -349,3 +349,25 @@ button.color1.selected {
     margin: 0 .4em;
     border-radius: .6em;
 }
+
+/* Spool station panel (device_type: spool_station) */
+.station-result-ok {
+    color: @pantheon-mint;
+}
+
+.station-result-err {
+    color: @pantheon-red;
+}
+
+.station-fleet-on {
+    color: @pantheon-mint;
+}
+
+.station-fleet-off {
+    color: @pantheon-red;
+}
+
+.station-badge {
+    background-color: @pantheon-button-grey;
+    border-color: @pantheon-grey;
+}

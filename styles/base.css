@@ -344,6 +344,50 @@ trough {
     }
 }
 
+/* ── Spool station panel (device_type: spool_station, panels/spool_station.py) ── */
+.station-state {
+    font-size: 1.3em;
+    font-weight: bold;
+    padding: .2em .5em;
+}
+
+.station-sub {
+    font-size: .85em;
+    font-style: italic;
+    padding: 0 .5em .2em .5em;
+    opacity: .85;
+}
+
+.station-result-ok {
+    color: @echo;
+    font-weight: bold;
+    padding: .2em .5em;
+}
+
+.station-result-err {
+    color: @error;
+    font-weight: bold;
+    padding: .2em .5em;
+}
+
+.station-fleet-on {
+    color: @echo;
+    font-weight: bold;
+}
+
+.station-fleet-off {
+    color: @error;
+    font-weight: bold;
+}
+
+.station-badge {
+    border: .1em solid @lines;
+    border-radius: .6em;
+    padding: .15em .6em;
+    margin: 0 .4em;
+    font-size: .9em;
+}
+
 .content {
     margin: 0 .1em;
 }
