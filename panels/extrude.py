@@ -342,6 +342,18 @@ class Panel(ScreenPanel):
         self._screen._send_action(widget, "printer.gcode.script",
                                   {"script": f"G1 E{direction}{self.distance} F{self.speed * 60}"})
 
+    def _run_load_macro(self, widget=None):
+        """Run LOAD_FILAMENT. On a fleet worker the nozzle target is dropped
+        once the load has finished: heating there is owned by the fleet
+        daemon's prime/job flow, so the extruder should not sit hot after a
+        manual load. M400 waits for the queued moves; M104 would otherwise
+        change the target the moment Klipper parses it. Unload is left alone
+        because it never touches the extruder temperature."""
+        script = f"LOAD_FILAMENT SPEED={self.speed * 60}"
+        if self._is_fleet_worker():
+            script += "\nM400\nM104 S0"
+        self._screen._send_action(widget, "printer.gcode.script", {"script": script})
+
     def load_unload(self, widget, direction):
         if direction == "-":
             if not self.unload_filament:
@@ -796,8 +808,7 @@ class Panel(ScreenPanel):
 
             # Run load macro if requested
             if run_load_macro:
-                self._screen._send_action(None, "printer.gcode.script",
-                                        {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+                self._run_load_macro()
 
     # ── Worker scan-first flow (Set Filament / Load on a fleet worker) ──
 
@@ -1188,10 +1199,7 @@ class Panel(ScreenPanel):
 
         # Run load macro if requested
         if self._active_run_load_macro and self.load_filament:
-            self._screen._send_action(
-                None, "printer.gcode.script",
-                {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"},
-            )
+            self._run_load_macro()
 
         self._screen.show_popup_message(
             f"Spool registered: {moonraker_filament}, {weight:.0f}g\nQR: {qr_code}",
@@ -1492,8 +1500,7 @@ class Panel(ScreenPanel):
 
         # Run load macro if requested
         if run_load_macro:
-            self._screen._send_action(None, "printer.gcode.script",
-                                      {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+            self._run_load_macro()
 
     def set_filament_type(self, widget, filament_type, dialog):
         # This method is kept for backward compatibility but now redirects to weight entry
@@ -2163,8 +2170,7 @@ class Panel(ScreenPanel):
 
         # Run load macro if requested
         if run_load_macro:
-            self._screen._send_action(None, "printer.gcode.script",
-                                      {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+            self._run_load_macro()
 
     def process_custom_filament_with_specs(self, custom_filament, weight, density, diameter, run_load_macro=False):
         """Update both filament_type and filament_specs for custom filament"""
@@ -2215,8 +2221,7 @@ class Panel(ScreenPanel):
 
         # Run load macro if requested
         if run_load_macro:
-            self._screen._send_action(None, "printer.gcode.script",
-                                      {"script": f"LOAD_FILAMENT SPEED={self.speed * 60}"})
+            self._run_load_macro()
 
     def update_button_labels(self):
         # Create the filament label and replace the icon
